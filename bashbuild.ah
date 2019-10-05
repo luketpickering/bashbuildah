@@ -1,0 +1,238 @@
+#!/bin/bash
+
+DRY_RUN=0
+
+NAME=""
+ROOT_IT=""
+VERS="default"
+
+if ! echo "${BASH_SOURCE}" | grep "/" --silent; then
+  BB_SCRIPT_DIR=$(readlink -f $PWD)
+else
+  BB_SCRIPT_DIR=$(readlink -f ${BASH_SOURCE%/*})
+fi
+
+while [[ ${#} -gt 0 ]]; do
+
+  key="$1"
+  case $key in
+
+      -n)
+
+      if [[ ${#} -lt 2 ]]; then
+        echo "[ERROR]: ${1} expected a value."
+        exit 1
+      fi
+
+      NAME="$2"
+      echo "[OPT]: Attempting to build package named: \"${NAME}\""
+      shift # past argument
+      ;;
+
+      -r)
+
+      if [[ ${#} -lt 2 ]]; then
+        echo "[ERROR]: ${1} expected a value."
+        exit 1
+      fi
+
+      ROOT_IT="$2"
+      echo "[OPT]: Building for root image: \"${ROOT_IT}\""
+      shift # past argument
+      ;;
+
+      -v)
+
+      if [[ ${#} -lt 2 ]]; then
+        echo "[ERROR]: ${1} expected a value."
+        exit 1
+      fi
+
+      VERS="$2"
+      echo "[OPT]: Building version: \"${VERS}\""
+      shift # past argument
+      ;;
+
+      -D|--root-dir)
+
+      if [[ ${#} -lt 2 ]]; then
+        echo "[ERROR]: ${1} expected a value."
+        exit 1
+      fi
+
+      BB_ROOT="$2"
+      echo "[OPT]: BB_ROOT=${BB_ROOT}"
+      shift # past argument
+      ;;
+
+      -R|--repo)
+
+      if [[ ${#} -lt 2 ]]; then
+        echo "[ERROR]: ${1} expected a value."
+        exit 1
+      fi
+
+      BB_REPO="$2/"
+      echo "[OPT]: BB_REPO=${2}"
+      shift # past argument
+      ;;
+
+      -R|--repo)
+
+      BB_REBUILD="ON"
+      echo "[OPT]: Rebuilding dependencies."
+      ;;
+
+      -?|--help)
+echo "[RUNLIKE] ${SCRIPTNAME} -n <pkg> -r <base os:tag> [opts]"
+echo -e "\t-n <package name>                    : The name of the container "
+echo -e "\t                                       package to build."
+echo -e "\t-r <package name>                    : The name of the root image "
+echo -e "\t                                       to use, this describes the "
+echo -e "\t                                       base OS: e.g centos:7"
+echo -e "\t-v <version>                         : Specify a version of the "
+echo -e "\t                                       software to build."
+echo -e "\t                                       defaults to \"default\"."
+echo -e "\t-D|--root-dir <bb manifest root dir> : The directory to use as the"
+echo -e "\t                                       root of the container build"
+echo -e "\t                                       script manifest. This option"
+echo -e "\t                                       overrides the BB_ROOT env"
+echo -e "\t                                       var. If BB_ROOT is not set"
+echo -e "\t                                       then the parent directory of "
+echo -e "\t                                       this script will be used."
+echo -e "\t-R|--repo <reponame>                 : The registry repo name to"
+echo -e "\t                                       used."
+echo -e "\t                                       this option overrides the"
+echo -e "\t                                       BB_REPO env var."
+echo -e "\t-f|--rebuild-deps                    : This flag will trigger the"
+echo -e "\t                                       rebuild of all dependent are"
+echo -e "\t                                       containers. N.B. As "
+echo -e "\t                                       containers built by custom "
+echo -e "\t                                       scripts, user defined caching"
+echo -e "\t                                       stages may not be rebuilt. "
+echo -e "\t                                       If you mean business, "
+echo -e "\t                                       \'buildah rmi --all\'."
+echo -e "\t-?|--help                    : Print this message."
+      exit 0
+      ;;
+
+      *)
+              # unknown option
+      echo "Unknown option $1"
+      exit 1
+      ;;
+  esac
+  shift # past argument or value
+done
+
+if [ -z ${BB_ROOT} ]; then
+  BB_ROOT=${BB_SCRIPT_DIR}
+fi
+
+export BB_ROOT
+export BB_SCRIPT_DIR
+export BUILDAH_FORMAT=docker
+export BB_REPO
+export BB_REBUILD
+
+source $BB_SCRIPT_DIR/common.funcs
+
+function bb_resolve_deps {
+    local DEPFILE=$1
+    echo "Resolving dependencies found in: \"${DEPFILE}\""
+    while IFS="" read -r p || [ -n "$p" ]; do
+        local SANIT_LINE=$(echo $p | sed "s/^[[:space:]]\+/X/g" | sed "s/[[:space:]]\{2,\}/X/g" | grep -v "^#")
+
+        # Skip comments
+        if [ -z "${SANIT_LINE}" ]; then
+          continue
+        fi
+
+        local OLDIFS=${IFS}
+        local IFS=" "
+        set -- $SANIT_LINE
+        local NAME=$1
+        local ROOT_IT=$2
+        local VERS=$3
+        if [ -z $VERS ]; then
+            VERS=default
+        fi
+
+        local IFS=:
+        set -- $NAME
+        local NAME_IMAGE=$1
+        local NAME_TAG=$2
+
+        set -- $ROOT_IT
+        local ROOT_IMAGE=$1
+        local ROOT_TAG=$2
+
+        local IFS=${OLDIFS}
+
+        echo "Attempt to build dependency:"
+        echo -e "\timage     : \"${NAME_IMAGE}:${NAME_TAG}\""
+        echo -e "\troot-image: \"${ROOT_IMAGE}:${ROOT_TAG}\""
+        echo -e "\tversion   : \"${VERS}\""
+
+        if ! bb_build ${NAME_IMAGE} ${ROOT_IMAGE}:${ROOT_TAG} ${VERS} ${NAME_TAG}; then
+          return 1
+        fi
+
+        # This check includes the repo name, to ensure that the dependency is fulfilled
+        if [ ${DRY_RUN} -eq 0 ] && ! podman image exists ${NAME_IMAGE}:${NAME_TAG}; then
+          echo "After building: \"${NAME_IMAGE}:${NAME_TAG}\" does not exist. Something went wrong."
+          local NONREPO_INAME=${NAME_IMAGE}
+          if [ ! "${NAME_IMAGE%%/*}" = "${NAME_IMAGE##*/}" ]; then
+              NONREPO_INAME=${NAME_IMAGE##*/}
+          fi
+          if podman image exists ${NONREPO_INAME}:${NAME_TAG}; then
+            echo "But: \"${NONREPO_INAME}:${NAME_TAG}\" does. Does \"$BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/build.ah ${TAG}\" definitely set the name as expected?"
+            continue
+          fi
+          return 1
+        fi
+    done < ${DEPFILE}
+}
+
+function bb_build {
+    bb_sanitize_inputs $1 $2 $3 $4
+
+    if [ "${BB_REBUILD}" = "ON" ] && podman image exists ${NAME}:${TAG}; then
+        echo "Not rebuilding: \"${NAME}:${TAG}\""
+        return 0
+    fi
+
+    local NONREPO_INAME=${NAME}
+    if [ ! "${NAME%%/*}" = "${NAME##*/}" ]; then
+        NONREPO_INAME=${NAME##*/}
+    fi
+
+    if ! bb_check_exists $NONREPO_INAME $ROOT_IT $VERS; then
+      return 1
+    fi
+
+    if [ -e $BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/depends.on ]; then
+        if ! bb_resolve_deps $BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/depends.on; then
+          echo "Failed to resolve dependencies of \"$NAME\" (v: $VERS) rooted on: \"$ROOT_IMAGE:$ROOT_TAG\""
+          return 1
+        fi
+    fi
+
+    echo "Running: \"$BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/build.ah ${TAG}\""
+    if [ ${DRY_RUN} -eq 0 ] && ! $BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/build.ah ${TAG}; then
+      echo "Failed building $NAME:${TAG}"
+      return 1
+    fi
+    echo "Built: $NAME:${TAG}"
+}
+
+if [ -z $NAME ]; then
+  echo "Must specify a name for the container to build."
+  exit 1
+fi
+if [ -z $ROOT_IT ]; then
+  echo "Must specify a root image name for the container structure."
+  exit 2
+fi
+
+bb_build $NAME $ROOT_IT $VERS
