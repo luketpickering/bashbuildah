@@ -1,5 +1,5 @@
 #!/bin/bash
-set -x
+set +x
 
 DRY_RUN=0
 
@@ -147,16 +147,20 @@ source $BB_SCRIPT_DIR/common.funcs
 function bb_resolve_deps {
     local DEPFILE=$1
     echo "Resolving dependencies found in: \"${DEPFILE}\""
-    while IFS="" read -r p || [ -n "$p" ]; do
-        local SANIT_LINE=$(echo $p | sed "s/^[[:space:]]\+/X/g" | sed "s/[[:space:]]\{2,\}/X/g" | grep -v "^#")
+
+    local LOOPOLDIFS=${IFS}
+    IFS=$'\n'
+    for line in $(cat ${DEPFILE}); do
+       echo "LINE: \"$line\""
+        local SANIT_LINE=$(echo $line | sed "s/^[[:space:]]\+//g" | sed "s/[[:space:]]\{2,\}/ /g" | grep -v "^#")
 
         # Skip comments
         if [ -z "${SANIT_LINE}" ]; then
           continue
         fi
 
-        local OLDIFS=${IFS}
-        local IFS=" "
+        OLDIFS=${IFS}
+        IFS=" "
         set -- $SANIT_LINE
         local NAME=$1
         local ROOT_IT=$2
@@ -165,7 +169,8 @@ function bb_resolve_deps {
             VERS=default
         fi
 
-        local IFS=:
+        OLDIFS=${IFS}
+        IFS=:
         set -- $NAME
         local NAME_IMAGE=$1
         local NAME_TAG=$2
@@ -174,7 +179,7 @@ function bb_resolve_deps {
         local ROOT_IMAGE=$1
         local ROOT_TAG=$2
 
-        local IFS=${OLDIFS}
+        IFS=${OLDIFS}
 
         if [ "${VERS}" = "default" ]; then
           bb_resolve_default_vers ${NAME_IMAGE}
@@ -193,6 +198,7 @@ function bb_resolve_deps {
         echo -e "\tversion   : \"${VERS}\""
 
         if ! bb_build ${NAME_IMAGE} ${ROOT_IMAGE}:${ROOT_TAG} ${VERS} ${NAME_TAG}; then
+          IFS=${LOOPOLDIFS}
           return 1
         fi
 
@@ -206,7 +212,8 @@ function bb_resolve_deps {
           fi
           return 1
         fi
-    done < ${DEPFILE}
+    done
+    IFS=${LOOPOLDIFS}
 }
 
 function bb_build {
@@ -255,6 +262,7 @@ function bb_build {
 
     echo "Running: \"$BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/build.ah ${TAG}\""
     export ROOT_IT="${ROOT_IMAGE}:${ROOT_TAG}"
+    export BB_PKG_DIR="$BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/"
     if [ ${DRY_RUN} -eq 0 ] && ! $BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/build.ah ${TAG}; then
       echo "Failed building $NAME:${TAG}"
       return 1

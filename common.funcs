@@ -15,9 +15,9 @@ function bb_sanitize_inputs_notag {
     fi
 
     local OLDIFS=${IFS}
-    local IFS=:
+    IFS=:
     set -- $ROOT_IT
-    local IFS=${OLDIFS}
+    IFS=${OLDIFS}
     ROOT_IMAGE=$1
     ROOT_TAG=$2
     if [ -z $ROOT_TAG ]; then
@@ -226,30 +226,30 @@ function bb_get_buildbox {
   local ROOT_IT=${1}
 
   local OLDIFS=${IFS}
-  local IFS=:
+  IFS=:
   set -- $ROOT_IT
-  local IFS=${OLDIFS}
+  IFS=${OLDIFS}
   ROOT_IMAGE=$1
   ROOT_TAG=$2
   if [ -z $ROOT_TAG ]; then
       ROOT_TAG=latest
   fi
 
-  echo ${BB_REPO_SL}/buildbox:${ROOT_IMAGE}_${ROOT_TAG}
+  echo ${BB_REPO_SL}buildbox:${ROOT_IMAGE}_${ROOT_TAG}
 }
 
 function bb_get_runbox {
   local ROOT_IT=${1}
 
   local OLDIFS=${IFS}
-  local IFS=:
+  IFS=:
   set -- $ROOT_IT
-  local IFS=${OLDIFS}
+  IFS=${OLDIFS}
   ROOT_IMAGE=$1
   ROOT_TAG=$2
   if [ -z $ROOT_TAG ]; then
       ROOT_TAG=latest
   fi
 
-  echo ${BB_REPO_SL}/runbox:${ROOT_IMAGE}_${ROOT_TAG}
+  echo ${BB_REPO_SL}runbox:${ROOT_IMAGE}_${ROOT_TAG}
 }
