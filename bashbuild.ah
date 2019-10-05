@@ -112,7 +112,7 @@ echo -e "\t                                       scripts, user defined caching"
 echo -e "\t                                       stages may not be rebuilt. "
 echo -e "\t                                       If you mean business, "
 echo -e "\t                                       \'buildah rmi --all\'."
-echo -e "\t-?|--help                    : Print this message."
+echo -e "\t-?|--help                            : Print this message."
       exit 0
       ;;
 

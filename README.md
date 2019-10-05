@@ -7,38 +7,77 @@ For maximal fragility and ease of scripting, most metadata is purely
 directory structure defined.
 
 Containers have 4 bits of metadata:
-    * Name
-    * Versions
-    * Root image name
-    * Root image tag
+*) Name
+*) Versions
+*) Root image name
+*) Root image tag
 
-e.g. For GENIE 2.12.2 based on debian:stretch-slim, you can expect to
-find the build scripts in `GENIE/2_12_2/debian/stretch-slim`.
+e.g. For PKG 1.2.3 based on debian:stretch-slim, you can expect to
+find the build scripts in `PKG/1_2_3/debian/stretch-slim`.
 
-A container is can be built from 3 files:
-    * `depends.on`
-    * `injectin.to`
-    * `build.ah`
+A container is then expected to be built by a bash script `build.ah`
+which contains the buildah commands used to build and configure the software.
 
-### `depends.on`
-
-This file contains an ordered, newline delimited list of containers that must be built before attempting to build this container (as they will be used in it!)
-
-*N.B.* No checks for cyclic dependencies will be performed, so you have to be
-somewhat careful!
-
-### `injectin.to`
-
-This bash script contains the buildah commands required to inject the target
-of this container into another container. Usually this is a `copy` directive
-and a number of `config --env` directives.
-
-### `build.ah`
-
-This bash script contains the buildah commands required to build this container's target.
+Two other optional scripts are used by the framework: `depends.on`
+should contain a ordered, newline delimiter list of containers defined
+in the same directory structure that need to be successfully built
+before attempting to build this one. If `injectin.to` exists then it
+is expected to be an executable shell script that takes two buildah
+container ids 'from' and 'to' and then executes relevant buildah
+commands to move the built package payload from a build stage into a
+runtime container, or a subsequent build step. *N.B.* This may often
+include setting up the correct runtime environment in the `to` 
+container.
 
 ## Usage
 
-The steering script: `buildahba.sh` will assume that the directory it is in is
-the root of the metadata filesystem and will look for configured packages
-there.
+The steering script: `bashbuild.ah` responds to `--help` like:
+
+```
+[RUNLIKE]  -n <pkg> -r <base os:tag> [opts]
+	-n <package name>                    : The name of the container 
+	                                       package to build.
+	-r <package name>                    : The name of the root image 
+	                                       to use, this describes the 
+	                                       base OS: e.g centos:7
+	-v <version>                         : Specify a version of the 
+	                                       software to build.
+	                                       defaults to "default".
+	-D|--root-dir <bb manifest root dir> : The directory to use as the
+	                                       root of the container build
+	                                       script manifest. This option
+	                                       overrides the BB_ROOT env
+	                                       var. If BB_ROOT is not set
+	                                       then the parent directory of 
+	                                       this script will be used.
+	-R|--repo <reponame>                 : The registry repo name to
+	                                       used.
+	                                       this option overrides the
+	                                       BB_REPO env var.
+	-f|--rebuild-deps                    : This flag will trigger the
+	                                       rebuild of all dependent are
+	                                       containers. N.B. As 
+	                                       containers built by custom 
+	                                       scripts, user defined caching
+	                                       stages may not be rebuilt. 
+	                                       If you mean business, 
+	                                       \'buildah rmi --all\'.
+	-?|--help                             : Print this message.
+```
+
+A helper script for generating the directory structure for a new
+container build script is also provided `addabui.ld` which respondes
+to `--help` like:
+
+```
+./addadabui.ld -?
+	-r|--root-dir <bb manifest root dir> : The directory to use as the
+	                                       root of the container build
+	                                       script manifest. This option
+	                                       overrides the BB_ROOT env
+	                                       var. If BB_ROOT is not set
+	                                       then the parent directory of 
+	                                       this script will be used.
+	-?|--help                            : Print this message.
+
+```

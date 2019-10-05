@@ -31,7 +31,7 @@ echo -e "\t                                       overrides the BB_ROOT env"
 echo -e "\t                                       var. If BB_ROOT is not set"
 echo -e "\t                                       then the parent directory of "
 echo -e "\t                                       this script will be used."
-echo -e "\t-?|--help                    : Print this message."
+echo -e "\t-?|--help                            : Print this message."
       exit 0
       ;;
 
