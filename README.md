@@ -27,7 +27,9 @@ container ids 'from' and 'to' and then executes relevant buildah
 commands to move the built package payload from a build stage into a
 runtime container, or a subsequent build step. *N.B.* This may often
 include setting up the correct runtime environment in the `to` 
-container.
+container. Helper functions exist for abstracting the injection of build 
+targets from a stage or dependency container into runtime container along
+with a few other helper function in `common.funcs`.
 
 ## Usage
 
@@ -81,3 +83,24 @@ to `--help` like:
 	-?|--help                            : Print this message.
 
 ```
+
+## Writing build scripts
+
+```//TODO```
+
+### `build.ah` Script environment
+
+Passed a single command line option which is tag expected to be built by this 
+invocation.
+
+Available environment variables:
+
+`BB_SCRIPT_DIR`: The directory containing the currently executing bashbuildah instance. Used to set up common functions for use in build scripts.
+`BB_REPO_SL`: The repo name with trailing slash if it exists, 
+  safe to pre-pend to image name as if no repo was supplied, this will be an 
+  empty string.
+`ROOT_IT`: The root_image:root_tagname specification.
+`BB_PKG_DIR`: The directory containing the build.ah script being executed by 
+  `bashbuild.ah` Careful not to rely on this environment variable in `inject.to` 
+  scripts as they are designed to be called by `build.ah` scripts from other 
+  packages

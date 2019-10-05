@@ -1,6 +1,6 @@
 #!/bin/bash
 
-function bb_sanitize_inputs {
+function bb_sanitize_inputs_notag {
     NAME=$1
     local ROOT_IT=$2
     VERS=$3
@@ -23,23 +23,90 @@ function bb_sanitize_inputs {
     if [ -z $ROOT_TAG ]; then
         ROOT_TAG=latest
     fi
+}
 
+function bb_sanitize_inputs {
+    NAME=$1
+    local ROOT_IT=$2
+    VERS=$3
     TAG=$4
     if [ -z $TAG ]; then
       TAG=latest
+    fi
+
+    bb_sanitize_inputs_notag ${NAME} ${ROOT_IT} ${VERS}
+}
+
+function bb_say_packages {
+    if [ ! -d ${BB_ROOT} ]; then
+        echo "Possible package directories: "
+        for d in ${BB_ROOT}/*/ ; do
+            echo "\t ${d}"
+        done
+    fi
+}
+
+function bb_say_versions {
+    if [ -d ${BB_ROOT}/${1} ]; then
+        echo "Possible versions for package ${1}: "
+        for d in ${BB_ROOT}/${1}/*/ ; do
+            echo -e "\t $(echo $d | sed "s|${BB_ROOT}/${1}/||g" | sed 's|/||g')"
+        done
+    fi
+}
+
+function bb_say_root_names {
+    if [ -d ${BB_ROOT}/${1}/${2} ]; then
+        echo "Possible root image names for package ${1}, version: ${2}: "
+        for d in ${BB_ROOT}/${1}/${2}/*/ ; do
+            echo -e "\t $(echo $d | sed "s|${BB_ROOT}/${1}/${2}/||g" | sed 's|/||g')"
+        done
+    fi
+}
+
+function bb_say_root_tags {
+    if [ -d ${BB_ROOT}/${1}/${2}/${3} ]; then
+        echo "Possible root tag names for package ${1}, version: ${2}, based on ${3}: "
+        for d in ${BB_ROOT}/${1}/${2}/${3}/*/ ; do
+            echo -e "\t $(echo $d | sed "s|${BB_ROOT}/${1}/${2}/${3}/||g" | sed 's|/||g')"
+        done
     fi
 }
 
 function bb_check_exists {
 
-    if ! bb_sanitize_inputs $1 $2 $3; then
+    if ! bb_sanitize_inputs_notag $1 $2 $3; then
       return $?
     fi
 
     echo "Checking \"$NAME\" (v: $VERS) rooted on: \"$ROOT_IMAGE:$ROOT_TAG\""
 
+    if [ ! -d $BB_ROOT ]; then
+        echo "BB_ROOT directory \"$BB_ROOT/\" doesn't exist."
+        return 3
+    fi
+
+    if [ ! -d $BB_ROOT/$NAME ]; then
+        echo "Package directory \"$BB_ROOT/$NAME\" doesn't exist."
+        bb_say_packages
+        return 3
+    fi
+
+    if [ ! -d $BB_ROOT/$NAME/$VERS ]; then
+        echo "Version directory \"$BB_ROOT/$NAME/$VERS\" doesn't exist."
+        bb_say_versions ${NAME}
+        return 3
+    fi
+
+    if [ ! -d $BB_ROOT/$NAME/$VERS/$ROOT_IMAGE ]; then
+        echo "Package root container directory \"$BB_ROOT/$NAME/$VERS/$ROOT_IMAGE\" doesn't exist."
+        bb_say_root_names ${NAME} ${VERS}
+        return 3
+    fi
+
     if [ ! -d $BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG ]; then
-        echo "Directory \"$BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG\" doesn't exist."
+        echo "Package root container tag directory \"$BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG\" doesn't exist."
+        bb_say_root_names ${NAME} ${VERS} ${ROOT_IMAGE}
         return 3
     fi
 
@@ -58,8 +125,13 @@ function bb_check_exists {
 
 function bb_inject {
 
-    FROM=$1
-    TO=$2
+    local NAME
+    local VERS
+    local ROOT_IMAGE
+    local ROOT_TAG
+
+    local FROM=$1
+    local TO=$2
     if [ -z $FROM ]; then
     echo "Error: expected a FROM buildah container id."
     exit 1
@@ -94,8 +166,8 @@ function bb_inject {
 }
 
 function bb_get_cont_env {
-    FROM=$1
-    ENVNAME=$2
+    local FROM=$1
+    local ENVNAME=$2
 
     # Have to check if it is empty or it will print an error
     if buildah run ${1} printenv ${2} &> /dev/null; then
@@ -104,16 +176,16 @@ function bb_get_cont_env {
 }
 
 function bb_set_psone {
-    FROM=$1
-    STR=$2
+    local FROM=$1
+    local STR=$2
     buildah run ${FROM} sed -i -e "\$a PS1=\"\\\\[\\\\033[01;31m\\\\]${STR}\\\\[\\\\033[00m\\\\]:\\\\[\\\\033[01;34m\\\\]\\\\w\\\\[\\\\033[00m\\\\]# \"" /root/.bashrc
 }
 
 function bb_copy_from_to {
-    FROM=$1
-    TO=$2
-    SRC=$3
-    DEST=$4
+    local FROM=$1
+    local TO=$2
+    local SRC=$3
+    local DEST=$4
 
 cat << EOF > /tmp/$$.copy
 #!/bin/bash
@@ -126,4 +198,58 @@ EOF
     buildah unshare /tmp/$$.copy
     rm /tmp/$$.copy
 
+}
+
+function bb_add {
+  local TO=$1
+  local SRC=$2
+  local DEST=$3
+
+  if [ ! -e ${BB_PKG_DIR}/${SRC} ]; then
+    echo "Requested buildah add ${TO} ${SRC} ${DEST} but cannot find: \"${BB_PKG_DIR}/${SRC}\""
+    return 1
+  fi
+  buildah add ${TO} ${BB_PKG_DIR}/${SRC} ${DEST}
+}
+
+function bb_resolve_default_vers {
+  local NAME=$1
+
+  if [ ! -d ${BB_ROOT}/${NAME}/default ]; then
+    echo "[ERROR]: Tried to resolve default version for package: ${NAME}, but ${BB_ROOT}/${NAME}/default doesn't exist."
+    exit 1
+  fi
+  VERS=$(echo $(readlink -f ${BB_ROOT}/${NAME}/default) | sed "s|${BB_ROOT}/${NAME}/||g")
+}
+
+function bb_get_buildbox {
+  local ROOT_IT=${1}
+
+  local OLDIFS=${IFS}
+  local IFS=:
+  set -- $ROOT_IT
+  local IFS=${OLDIFS}
+  ROOT_IMAGE=$1
+  ROOT_TAG=$2
+  if [ -z $ROOT_TAG ]; then
+      ROOT_TAG=latest
+  fi
+
+  echo ${BB_REPO_SL}/buildbox:${ROOT_IMAGE}_${ROOT_TAG}
+}
+
+function bb_get_runbox {
+  local ROOT_IT=${1}
+
+  local OLDIFS=${IFS}
+  local IFS=:
+  set -- $ROOT_IT
+  local IFS=${OLDIFS}
+  ROOT_IMAGE=$1
+  ROOT_TAG=$2
+  if [ -z $ROOT_TAG ]; then
+      ROOT_TAG=latest
+  fi
+
+  echo ${BB_REPO_SL}/runbox:${ROOT_IMAGE}_${ROOT_TAG}
 }

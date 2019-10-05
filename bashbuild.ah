@@ -1,4 +1,5 @@
 #!/bin/bash
+set -x
 
 DRY_RUN=0
 
@@ -60,7 +61,7 @@ while [[ ${#} -gt 0 ]]; do
         exit 1
       fi
 
-      BB_ROOT="$2"
+      BB_ROOT=$(readlink -f $2)
       echo "[OPT]: BB_ROOT=${BB_ROOT}"
       shift # past argument
       ;;
@@ -132,8 +133,14 @@ fi
 export BB_ROOT
 export BB_SCRIPT_DIR
 export BUILDAH_FORMAT=docker
-export BB_REPO
-export BB_REBUILD
+
+BB_REPO_SL=
+if [ ! -z BB_REPO ]; then
+  BB_REPO_SL="${BB_REPO}/"
+fi
+
+export BB_REPO_SL
+export BB_REBUILD=OFF
 
 source $BB_SCRIPT_DIR/common.funcs
 
@@ -169,8 +176,19 @@ function bb_resolve_deps {
 
         local IFS=${OLDIFS}
 
+        if [ "${VERS}" = "default" ]; then
+          bb_resolve_default_vers ${NAME_IMAGE}
+        fi
+
+        local REPO_NAME_IMAGE=${BB_REPO_SL}${NAME_IMAGE}
+
+        # If default is really the name of the version, then we don't add it to the image name
+        if [ ! "${VERS}" = "default" ]; then
+          REPO_NAME_IMAGE=${REPO_NAME_IMAGE}_${VERS}
+        fi
+
         echo "Attempt to build dependency:"
-        echo -e "\timage     : \"${NAME_IMAGE}:${NAME_TAG}\""
+        echo -e "\timage     : \"${REPO_NAME_IMAGE}:${NAME_TAG}\""
         echo -e "\troot-image: \"${ROOT_IMAGE}:${ROOT_TAG}\""
         echo -e "\tversion   : \"${VERS}\""
 
@@ -179,14 +197,11 @@ function bb_resolve_deps {
         fi
 
         # This check includes the repo name, to ensure that the dependency is fulfilled
-        if [ ${DRY_RUN} -eq 0 ] && ! podman image exists ${NAME_IMAGE}:${NAME_TAG}; then
-          echo "After building: \"${NAME_IMAGE}:${NAME_TAG}\" does not exist. Something went wrong."
+        if [ ${DRY_RUN} -eq 0 ] && ! podman image exists ${REPO_NAME_IMAGE}:${NAME_TAG}; then
+          echo "After building: \"${REPO_NAME_IMAGE}:${NAME_TAG}\" does not exist. Something went wrong."
           local NONREPO_INAME=${NAME_IMAGE}
-          if [ ! "${NAME_IMAGE%%/*}" = "${NAME_IMAGE##*/}" ]; then
-              NONREPO_INAME=${NAME_IMAGE##*/}
-          fi
-          if podman image exists ${NONREPO_INAME}:${NAME_TAG}; then
-            echo "But: \"${NONREPO_INAME}:${NAME_TAG}\" does. Does \"$BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/build.ah ${TAG}\" definitely set the name as expected?"
+          if podman image exists ${NAME_IMAGE}:${NAME_TAG}; then
+            echo "But: \"${NAME_IMAGE}:${NAME_TAG}\" does. Does \"$BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/build.ah ${TAG}\" definitely set the name as expected? (Hint: Use the BB_REPO_SL to add a repo name to built containers consistently)"
             continue
           fi
           return 1
@@ -195,21 +210,41 @@ function bb_resolve_deps {
 }
 
 function bb_build {
+
+    local FORCEBUILD=${BB_REBUILD}
+    # Used to force build of the specified container
+    if [ "$1" = "FORCE" ]; then
+      FORCEBUILD="ON"
+      shift
+    fi
+
     bb_sanitize_inputs $1 $2 $3 $4
 
-    if [ "${BB_REBUILD}" = "ON" ] && podman image exists ${NAME}:${TAG}; then
+    if [ "${VERS}" = "default" ]; then
+      bb_resolve_default_vers ${NAME}
+    fi
+
+    local REPO_NAME=${BB_REPO_SL}${NAME}
+
+    # If default is really the name of the version, then we don't add it to the image name
+    if [ ! "${VERS}" = "default" ]; then
+      REPO_NAME=${REPO_NAME}_${VERS}
+    fi
+
+    if [ ! "${FORCEBUILD}" = "ON" ] && podman image exists ${REPO_NAME}:${TAG}; then
         echo "Not rebuilding: \"${NAME}:${TAG}\""
         return 0
+    else
+        echo "Image \"${REPO_NAME}:${TAG}\" needs building..."
     fi
 
-    local NONREPO_INAME=${NAME}
-    if [ ! "${NAME%%/*}" = "${NAME##*/}" ]; then
-        NONREPO_INAME=${NAME##*/}
-    fi
+    echo "TAG: ${TAG}"
 
-    if ! bb_check_exists $NONREPO_INAME $ROOT_IT $VERS; then
+    if ! bb_check_exists $NAME $ROOT_IT $VERS; then
       return 1
     fi
+
+    echo "TAG: ${TAG}"
 
     if [ -e $BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/depends.on ]; then
         if ! bb_resolve_deps $BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/depends.on; then
@@ -219,6 +254,7 @@ function bb_build {
     fi
 
     echo "Running: \"$BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/build.ah ${TAG}\""
+    export ROOT_IT="${ROOT_IMAGE}:${ROOT_TAG}"
     if [ ${DRY_RUN} -eq 0 ] && ! $BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/build.ah ${TAG}; then
       echo "Failed building $NAME:${TAG}"
       return 1
@@ -235,4 +271,4 @@ if [ -z $ROOT_IT ]; then
   exit 2
 fi
 
-bb_build $NAME $ROOT_IT $VERS
+bb_build FORCE $NAME $ROOT_IT $VERS 
