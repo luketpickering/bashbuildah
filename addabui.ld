@@ -1,5 +1,9 @@
 #!/bin/bash
 
+NAME=""
+ROOT_IT=""
+VERS="default"
+
 if ! echo "${BASH_SOURCE}" | grep "/" --silent; then
   BB_SCRIPT_DIR=$(readlink -f $PWD)
 else
@@ -11,7 +15,44 @@ while [[ ${#} -gt 0 ]]; do
   key="$1"
   case $key in
 
-      -r|--root-dir)
+      -n)
+
+      if [[ ${#} -lt 2 ]]; then
+        echo "[ERROR]: ${1} expected a value."
+        exit 1
+      fi
+
+      NAME="$2"
+      echo "[OPT]: Attempting to build package named: \"${NAME}\""
+      shift # past argument
+      ;;
+
+      -r)
+
+      if [[ ${#} -lt 2 ]]; then
+        echo "[ERROR]: ${1} expected a value."
+        exit 1
+      fi
+
+      ROOT_IT="$2"
+      echo "[OPT]: Building for root image: \"${ROOT_IT}\""
+      shift # past argument
+      ;;
+
+      -v)
+
+      if [[ ${#} -lt 2 ]]; then
+        echo "[ERROR]: ${1} expected a value."
+        exit 1
+      fi
+
+      VERS="$2"
+      echo "[OPT]: Building version: \"${VERS}\""
+      shift # past argument
+      ;;
+
+
+      -D|--root-dir)
 
       if [[ ${#} -lt 2 ]]; then
         echo "[ERROR]: ${1} expected a value."
@@ -24,7 +65,16 @@ while [[ ${#} -gt 0 ]]; do
       ;;
 
       -?|--help)
-echo -e "\t-r|--root-dir <bb manifest root dir> : The directory to use as the"
+echo "[RUNLIKE] ${SCRIPTNAME} -n <pkg> -r <base os:tag> [opts]"
+echo -e "\t-n <package name>                    : The name of the container "
+echo -e "\t                                       package to build."
+echo -e "\t-r <package name>                    : The name of the root image "
+echo -e "\t                                       to use, this describes the "
+echo -e "\t                                       base OS: e.g centos:7"
+echo -e "\t-v <version>                         : Specify a version of the "
+echo -e "\t                                       software to build."
+echo -e "\t                                       defaults to \"default\"."
+echo -e "\t-D|--root-dir <bb manifest root dir> : The directory to use as the"
 echo -e "\t                                       root of the container build"
 echo -e "\t                                       script manifest. This option"
 echo -e "\t                                       overrides the BB_ROOT env"
@@ -52,12 +102,10 @@ export BB_ROOT
 
 source $BB_SCRIPT_DIR/common.funcs
 
-NAME=$1
 if [ -z $NAME ]; then
   echo "Must specify a Name for the new container structure."
   exit 1
 fi
-ROOT_IT=$2
 if [ -z $ROOT_IT ]; then
   echo "Must specify a root image name for the new container structure."
   exit 1
