@@ -31,7 +31,7 @@ function bb_sanitize_inputs {
     VERS=$3
     TAG=$4
     if [ -z $TAG ]; then
-      TAG=latest
+      TAG=$(bb_get_root_tag ${ROOT_IT})
     fi
 
     bb_sanitize_inputs_notag ${NAME} ${ROOT_IT} ${VERS}
@@ -139,27 +139,27 @@ function bb_inject {
 
     if [ -z $TO ]; then
     echo "Error: expected a TO buildah container id."
-    exit 1
+    exit 2
     fi
 
     shift; shift
 
     if ! bb_check_exists $1 $2 $3; then
-      return $?
+      return 3
     fi
 
     if [ ! -e $BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/injectin.to ]; then
         echo "Script \"$BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/injectin.to\" doesn't exist."
-        return 3
+        return 4
     fi
 
     if [ ! -x $BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/injectin.to ]; then
         echo "Script \"$BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/injectin.to\" isn't executable."
-        return 4
+        return 5
     fi
 
     if ! $BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/injectin.to $FROM $TO; then
-      return 5
+      return 6
     fi
 
     return 0
@@ -200,6 +200,24 @@ EOF
 
 }
 
+function bb_wildcard_copy {
+  local CONT=$1
+  local SRC=$2
+  local DEST=$3
+
+cat << EOF > /tmp/$$.wccopy
+#!/bin/bash
+CONT_MP=\$(buildah mount ${CONT})
+echo cp \$CONT_MP${SRC} \$CONT_MP$DEST
+cp \$CONT_MP${SRC} \$CONT_MP$DEST
+buildah unmount ${CONT} &> /dev/null
+EOF
+
+    chmod +x /tmp/$$.wccopy
+    buildah unshare /tmp/$$.wccopy
+    rm /tmp/$$.wccopy
+}
+
 function bb_add {
   local TO=$1
   local SRC=$2
@@ -222,7 +240,7 @@ function bb_resolve_default_vers {
   VERS=$(echo $(readlink -f ${BB_ROOT}/${NAME}/default) | sed "s|${BB_ROOT}/${NAME}/||g")
 }
 
-function bb_get_buildbox {
+function bb_get_root_tag {
   local ROOT_IT=${1}
 
   local OLDIFS=${IFS}
@@ -235,21 +253,26 @@ function bb_get_buildbox {
       ROOT_TAG=latest
   fi
 
-  echo ${BB_REPO_SL}buildbox:${ROOT_IMAGE}_${ROOT_TAG}
+  echo ${ROOT_IMAGE}_${ROOT_TAG}
+}
+
+function bb_get_reponame {
+  local REPONAME=$1
+  local ROOT_IT=${2}
+
+  local ROOT_TAG=$(bb_get_root_tag ${ROOT_IT})
+
+  echo "${BB_REPO_SL}${REPONAME}:${ROOT_TAG}"
+}
+
+function bb_get_buildbox {
+  bb_get_reponame buildbox ${1}
 }
 
 function bb_get_runbox {
-  local ROOT_IT=${1}
+  bb_get_reponame runbox ${1}
+}
 
-  local OLDIFS=${IFS}
-  IFS=:
-  set -- $ROOT_IT
-  IFS=${OLDIFS}
-  ROOT_IMAGE=$1
-  ROOT_TAG=$2
-  if [ -z $ROOT_TAG ]; then
-      ROOT_TAG=latest
-  fi
-
-  echo ${BB_REPO_SL}runbox:${ROOT_IMAGE}_${ROOT_TAG}
+function bb_get_runbox_min {
+  bb_get_reponame runbox_min ${1}
 }

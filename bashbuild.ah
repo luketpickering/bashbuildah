@@ -6,6 +6,7 @@ DRY_RUN=0
 NAME=""
 ROOT_IT=""
 VERS="default"
+TAG=""
 
 if ! echo "${BASH_SOURCE}" | grep "/" --silent; then
   BB_SCRIPT_DIR=$(readlink -f $PWD)
@@ -39,6 +40,18 @@ while [[ ${#} -gt 0 ]]; do
 
       ROOT_IT="$2"
       echo "[OPT]: Building for root image: \"${ROOT_IT}\""
+      shift # past argument
+      ;;
+
+      -t)
+
+      if [[ ${#} -lt 2 ]]; then
+        echo "[ERROR]: ${1} expected a value."
+        exit 1
+      fi
+
+      TAG="$2"
+      echo "[OPT]: Tagging image as: \"${TAG}\""
       shift # past argument
       ;;
 
@@ -94,6 +107,12 @@ echo -e "\t                                       base OS: e.g centos:7"
 echo -e "\t-v <version>                         : Specify a version of the "
 echo -e "\t                                       software to build."
 echo -e "\t                                       defaults to \"default\"."
+echo -e "\t-t <tag>                             : Tag to use for requested"
+echo -e "\t                                       product. Will default to a "
+echo -e "\t                                       sanitization of the root"
+echo -e "\t                                       container name, e.g."
+echo -e "\t                                       debian:stretch-slim => "
+echo -e "\t                                       debian_stretch-slim. "
 echo -e "\t-D|--root-dir <bb manifest root dir> : The directory to use as the"
 echo -e "\t                                       root of the container build"
 echo -e "\t                                       script manifest. This option"
@@ -151,7 +170,6 @@ function bb_resolve_deps {
     local LOOPOLDIFS=${IFS}
     IFS=$'\n'
     for line in $(cat ${DEPFILE}); do
-       echo "LINE: \"$line\""
         local SANIT_LINE=$(echo $line | sed "s/^[[:space:]]\+//g" | sed "s/[[:space:]]\{2,\}/ /g" | grep -v "^#")
 
         # Skip comments
@@ -165,6 +183,7 @@ function bb_resolve_deps {
         local NAME=$1
         local ROOT_IT=$2
         local VERS=$3
+        local TAG
         if [ -z $VERS ]; then
             VERS=default
         fi
@@ -245,13 +264,9 @@ function bb_build {
         echo "Image \"${REPO_NAME}:${TAG}\" needs building..."
     fi
 
-    echo "TAG: ${TAG}"
-
     if ! bb_check_exists $NAME $ROOT_IT $VERS; then
       return 1
     fi
-
-    echo "TAG: ${TAG}"
 
     if [ -e $BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/depends.on ]; then
         if ! bb_resolve_deps $BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/depends.on; then
@@ -278,5 +293,8 @@ if [ -z $ROOT_IT ]; then
   echo "Must specify a root image name for the container structure."
   exit 2
 fi
+if [ -z $TAG ]; then
+  TAG=$(bb_get_root_tag $ROOT_IT)
+fi
 
-bb_build FORCE $NAME $ROOT_IT $VERS 
+bb_build FORCE $NAME $ROOT_IT $VERS $TAG
