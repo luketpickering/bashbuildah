@@ -1,12 +1,12 @@
 #!/bin/bash
 set +x
 
-DRY_RUN=0
+DRY_RUN=1
 
-NAME=""
-ROOT_IT=""
-VERS="default"
-TAG=""
+PKG_NAME=""
+PKG_ROOT_IT=""
+PKG_VERS="default"
+PKG_TAG=""
 
 if ! echo "${BASH_SOURCE}" | grep "/" --silent; then
   BB_SCRIPT_DIR=$(readlink -f $PWD)
@@ -26,8 +26,8 @@ while [[ ${#} -gt 0 ]]; do
         exit 1
       fi
 
-      NAME="$2"
-      echo "[OPT]: Attempting to build package named: \"${NAME}\""
+      PKG_NAME="$2"
+      echo "[OPT]: Attempting to build package named: \"${PKG_NAME}\""
       shift # past argument
       ;;
 
@@ -38,8 +38,8 @@ while [[ ${#} -gt 0 ]]; do
         exit 1
       fi
 
-      ROOT_IT="$2"
-      echo "[OPT]: Building for root image: \"${ROOT_IT}\""
+      PKG_ROOT_IT="$2"
+      echo "[OPT]: Building for root image: \"${PKG_ROOT_IT}\""
       shift # past argument
       ;;
 
@@ -50,8 +50,8 @@ while [[ ${#} -gt 0 ]]; do
         exit 1
       fi
 
-      TAG="$2"
-      echo "[OPT]: Tagging image as: \"${TAG}\""
+      PKG_TAG="$2"
+      echo "[OPT]: Tagging image as: \"${PKG_TAG}\""
       shift # past argument
       ;;
 
@@ -62,8 +62,8 @@ while [[ ${#} -gt 0 ]]; do
         exit 1
       fi
 
-      VERS="$2"
-      echo "[OPT]: Building version: \"${VERS}\""
+      PKG_VERS="$2"
+      echo "[OPT]: Building version: \"${PKG_VERS}\""
       shift # past argument
       ;;
 
@@ -146,7 +146,7 @@ echo -e "\t-?|--help                            : Print this message."
 done
 
 if [ -z ${BB_ROOT} ]; then
-  BB_ROOT=${BB_SCRIPT_DIR}
+  BB_ROOT=$(pwd)
 fi
 
 export BB_ROOT
@@ -154,85 +154,84 @@ export BB_SCRIPT_DIR
 export BUILDAH_FORMAT=docker
 
 BB_REPO_SL=
-if [ ! -z BB_REPO ]; then
+if [ ! -z $BB_REPO ]; then
   BB_REPO_SL="${BB_REPO}/"
 fi
 
 export BB_REPO_SL
 export BB_REBUILD=OFF
 
-source $BB_SCRIPT_DIR/common.funcs
+source $BB_SCRIPT_DIR/framework.funcs
 
 function bb_resolve_deps {
-    local DEPFILE=$1
-    echo "Resolving dependencies found in: \"${DEPFILE}\""
+  local DEPFILE=$1
+  echo "Resolving dependencies found in: \"${DEPFILE}\""
 
-    local LOOPOLDIFS=${IFS}
-    IFS=$'\n'
-    for line in $(cat ${DEPFILE}); do
-        local SANIT_LINE=$(echo $line | sed "s/^[[:space:]]\+//g" | sed "s/[[:space:]]\{2,\}/ /g" | grep -v "^#")
+  local IFS=$'\n'
+  {
+  for line in $(cat ${DEPFILE}); do
+    local SANIT_LINE=$(echo $line | sed "s/^[[:space:]]\+//g" | sed "s/[[:space:]]\{2,\}/ /g" | grep -v "^#")
 
-        # Skip comments
-        if [ -z "${SANIT_LINE}" ]; then
-          continue
-        fi
+    # Skip comments and empty lines
+    if [ -z "${SANIT_LINE}" ]; then
+      continue
+    fi
 
-        OLDIFS=${IFS}
-        IFS=" "
-        set -- $SANIT_LINE
-        local NAME=$1
-        local ROOT_IT=$2
-        local VERS=$3
-        local TAG
-        if [ -z $VERS ]; then
-            VERS=default
-        fi
+    local OLDIFS=${IFS}
+    local IFS=" "
+    set -- $SANIT_LINE
+    local DEP_IDENTIFIER=$1
+    local DEP_ROOT_IT=$2
 
-        OLDIFS=${IFS}
-        IFS=:
-        set -- $NAME
-        local NAME_IMAGE=$1
-        local NAME_TAG=$2
+    IFS="@"
+    set -- $DEP_IDENTIFIER
+    local DEP_NAME=$1
+    local DEP_QUALS=$2
+    local DEP_VERS
+    local DEP_TAG
+    if [ ! -z ${DEP_QUALS} ]; then
+      IFS=":"
+      set -- ${DEP_QUALS}
+      DEP_VERS=$1
+      DEP_TAG=$2
+    else 
+      IFS=":"
+      set -- ${DEP_NAME}
+      DEP_NAME=$1
+      DEP_TAG=$2
+    fi
 
-        set -- $ROOT_IT
-        local ROOT_IMAGE=$1
-        local ROOT_TAG=$2
+    local DEP_VERS_STR="\"${DEP_VERS}\""
+    if [ -z $DEP_VERS ]; then
+      DEP_VERS=default
+      DEP_VERS_STR="${DEP_VERS} ($(bb_resolve_vers ${DEP_NAME} ${DEP_VERS}))"
+    fi
 
-        IFS=${OLDIFS}
+    set -- $DEP_ROOT_IT
+    local DEP_ROOT_IMAGE=$1
+    local DEP_ROOT_TAG=$2
 
-        if [ "${VERS}" = "default" ]; then
-          bb_resolve_default_vers ${NAME_IMAGE}
-        fi
+    IFS=${OLDIFS}
 
-        local REPO_NAME_IMAGE=${BB_REPO_SL}${NAME_IMAGE}
+    local DEP_IMAGE_FQNAME=$(bb_get_image_FQName $DEP_NAME $DEP_ROOT_IT $DEP_VERS $DEP_TAG)
 
-        # If default is really the name of the version, then we don't add it to the image name
-        if [ ! "${VERS}" = "default" ]; then
-          REPO_NAME_IMAGE=${REPO_NAME_IMAGE}_${VERS}
-        fi
+    echo "Attempt to build dependency:"
+    echo -e "\timage     : \"${DEP_IMAGE_FQNAME}\""
+    echo -e "\troot-image: \"${DEP_ROOT_IT}\""
+    echo -e "\tversion   : ${DEP_VERS_STR}"
 
-        echo "Attempt to build dependency:"
-        echo -e "\timage     : \"${REPO_NAME_IMAGE}:${NAME_TAG}\""
-        echo -e "\troot-image: \"${ROOT_IMAGE}:${ROOT_TAG}\""
-        echo -e "\tversion   : \"${VERS}\""
+    if ! bb_build $DEP_NAME $DEP_ROOT_IT $DEP_VERS $DEP_TAG; then
+      return 1
+    fi
 
-        if ! bb_build ${NAME_IMAGE} ${ROOT_IMAGE}:${ROOT_TAG} ${VERS} ${NAME_TAG}; then
-          IFS=${LOOPOLDIFS}
-          return 1
-        fi
-
-        # This check includes the repo name, to ensure that the dependency is fulfilled
-        if [ ${DRY_RUN} -eq 0 ] && ! podman image exists ${REPO_NAME_IMAGE}:${NAME_TAG}; then
-          echo "After building: \"${REPO_NAME_IMAGE}:${NAME_TAG}\" does not exist. Something went wrong."
-          local NONREPO_INAME=${NAME_IMAGE}
-          if podman image exists ${NAME_IMAGE}:${NAME_TAG}; then
-            echo "But: \"${NAME_IMAGE}:${NAME_TAG}\" does. Does \"$BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/build.ah ${TAG}\" definitely set the name as expected? (Hint: Use the BB_REPO_SL to add a repo name to built containers consistently)"
-            continue
-          fi
-          return 1
-        fi
-    done
-    IFS=${LOOPOLDIFS}
+    # This check includes the repo name, to ensure that the dependency is fulfilled
+    if [ ${DRY_RUN} -eq 0 ] && 
+       ! podman image exists ${DEP_IMAGE_FQNAME}; then
+      echo "After building: \"${DEP_IMAGE_FQNAME}\" does not exist. Something went wrong."
+      return 1
+    fi
+  done
+  }
 }
 
 function bb_build {
@@ -244,57 +243,86 @@ function bb_build {
       shift
     fi
 
-    bb_sanitize_inputs $1 $2 $3 $4
+    local PKG_NAME=$1
+    local PKG_ROOT_IT=$2
+    local PKG_ROOT_IMAGE
+    local PKG_ROOT_TAG
+    local PKG_VERS=$3
+    local PKG_TAG=$4
 
-    if [ "${VERS}" = "default" ]; then
-      bb_resolve_default_vers ${NAME}
+    if ! bb_check_dir_structure $PKG_NAME $PKG_ROOT_IT $PKG_VERS; then
+      return 1
     fi
 
-    local REPO_NAME=${BB_REPO_SL}${NAME}
+    bb_sanitize_pkg_identifier $PKG_NAME $PKG_ROOT_IT $PKG_VERS $PKG_TAG
 
-    # If default is really the name of the version, then we don't add it to the image name
-    if [ ! "${VERS}" = "default" ]; then
-      REPO_NAME=${REPO_NAME}_${VERS}
-    fi
+    local PKG_IMAGE_FQNAME=$(bb_get_image_FQName $PKG_NAME $PKG_ROOT_IT $PKG_VERS $PKG_TAG)
 
-    if [ ! "${FORCEBUILD}" = "ON" ] && podman image exists ${REPO_NAME}:${TAG}; then
-        echo "Not rebuilding: \"${NAME}:${TAG}\""
-        return 0
+    if [ ! "${FORCEBUILD}" = "ON" ] && \
+       podman image exists ${PKG_IMAGE_FQNAME}; then
+      echo "Not rebuilding: \"${PKG_IMAGE_FQNAME}\""
+      return 0
     else
-        echo "Image \"${REPO_NAME}:${TAG}\" needs building..."
+      echo "Image \"${PKG_IMAGE_FQNAME}\" needs building..."
     fi
 
-    if ! bb_check_exists $NAME $ROOT_IT $VERS; then
+    local PKG_DIR="${BB_ROOT}/${PKG_NAME}/${PKG_VERS}/${PKG_ROOT_IMAGE}/${PKG_ROOT_TAG}"
+
+    if [ -e ${PKG_DIR}/depends.on ]; then
+      if ! bb_resolve_deps ${PKG_DIR}/depends.on; then
+        echo "Failed to resolve dependencies of \"$PKG_NAME\" (v: $PKG_VERS, t: ${PKG_TAG}) rooted on: \"$PKG_ROOT_IMAGE:$PKG_ROOT_TAG\""
+        return 1
+      fi
+    fi
+
+    export BB_PKG_DIR=${PKG_DIR}
+    export BB_PKG_NAME=${PKG_NAME}
+    export BB_PKG_ROOT_IT=${PKG_ROOT_IT}
+    export BB_PKG_VERS=${PKG_VERS}
+    export BB_PKG_TAG=${PKG_TAG}
+    export BB_PKG_IMAGE_FQNAME=${PKG_IMAGE_FQNAME}
+
+    if [ ${DRY_RUN} -eq 0 ] && 
+       ! ${BB_PKG_DIR}/build.ah ${PKG_TAG}; then
+      echo "Failed building ${PKG_IMAGE_FQNAME}"
       return 1
     fi
 
-    if [ -e $BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/depends.on ]; then
-        if ! bb_resolve_deps $BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/depends.on; then
-          echo "Failed to resolve dependencies of \"$NAME\" (v: $VERS) rooted on: \"$ROOT_IMAGE:$ROOT_TAG\""
-          return 1
-        fi
+    if [ ${DRY_RUN} -eq 0 ]; then
+      echo "Built: ${PKG_IMAGE_FQNAME}"
+    else
+      echo "BUILD ENV:"
+      echo -e "\tBB_ROOT=${BB_ROOT}"
+      echo -e "\tBB_SCRIPT_DIR=${BB_SCRIPT_DIR}"
+      echo -e "\tBB_PKG_DIR=${BB_PKG_DIR}"
+      echo -e "\tBB_PKG_NAME=${BB_PKG_NAME}"
+      echo -e "\tBB_PKG_ROOT_IT=${BB_PKG_ROOT_IT}"
+      echo -e "\tBB_PKG_VERS=${BB_PKG_VERS}"
+      echo -e "\tBB_PKG_TAG=${BB_PKG_TAG}"
+      echo -e "\tBB_PKG_IMAGE_FQNAME=${BB_PKG_IMAGE_FQNAME}"
+      echo "DRY RUN: Didn't attempt to build ${PKG_IMAGE_FQNAME}"
     fi
 
-    echo "Running: \"$BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/build.ah ${TAG}\""
-    export ROOT_IT="${ROOT_IMAGE}:${ROOT_TAG}"
-    export BB_PKG_DIR="$BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/"
-    if [ ${DRY_RUN} -eq 0 ] && ! $BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/build.ah ${TAG}; then
-      echo "Failed building $NAME:${TAG}"
-      return 1
-    fi
-    echo "Built: $NAME:${TAG}"
+    export -n BB_PKG_DIR
+    export -n BB_PKG_NAME
+    export -n BB_PKG_ROOT_IT
+    export -n BB_PKG_VERS
+    export -n BB_PKG_TAG
+    export -n BB_PKG_IMAGE_FQNAME
 }
 
-if [ -z $NAME ]; then
-  echo "Must specify a name for the container to build."
+if [ -z $PKG_NAME ]; then
+  echo "Must specify a package name for the container to build (-n)."
+  bb_say_packages
   exit 1
 fi
-if [ -z $ROOT_IT ]; then
+if [ -z $PKG_ROOT_IT ]; then
   echo "Must specify a root image name for the container structure."
+  bb_say_root_names $PKG_NAME default
   exit 2
 fi
-if [ -z $TAG ]; then
-  TAG=$(bb_get_root_tag $ROOT_IT)
+if [ -z $PKG_TAG ]; then
+  PKG_TAG=$(bb_get_root_tag $PKG_ROOT_IT)
 fi
 
-bb_build FORCE $NAME $ROOT_IT $VERS $TAG
+bb_build FORCE $PKG_NAME $PKG_ROOT_IT $PKG_VERS $PKG_TAG

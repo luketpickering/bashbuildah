@@ -1,0 +1,176 @@
+#!/bin/bash
+
+function bb_get_root_tag {
+  local PKG_ROOT_IT=${1}
+
+  local OLDIFS=${IFS}
+  local IFS=:
+  set -- $PKG_ROOT_IT
+  IFS=${OLDIFS}
+  local PKG_ROOT_IMAGE=$1
+  local PKG_ROOT_TAG=$2
+  if [ -z $PKG_ROOT_TAG ]; then
+      PKG_ROOT_TAG=latest
+  fi
+
+  echo ${PKG_ROOT_IMAGE}_${PKG_ROOT_TAG}
+}
+
+function bb_sanitize_pkg_identifier_notag {
+    PKG_NAME=$1
+    local PKG_ROOT_IT=$2
+    PKG_VERS=$3
+
+    if [ -z $PKG_NAME ]; then
+        echo "Must specify a Name for the container structure."
+        return 1
+    fi
+    if [ -z $PKG_ROOT_IT ]; then
+        echo "Must specify a root image name for the container structure."
+        return 2
+    fi
+
+    local OLDIFS=${IFS}
+    local IFS=:
+    set -- $PKG_ROOT_IT
+    IFS=${OLDIFS}
+    PKG_ROOT_IMAGE=$1
+    PKG_ROOT_TAG=$2
+    if [ -z $PKG_ROOT_TAG ]; then
+        PKG_ROOT_TAG=latest
+    fi
+}
+
+function bb_sanitize_pkg_identifier {
+    PKG_NAME=$1
+    local PKG_ROOT_IT=$2
+    PKG_VERS=$3
+    PKG_TAG=$4
+    if [ -z $PKG_TAG ]; then
+      PKG_TAG=$(bb_get_root_tag ${PKG_ROOT_IT})
+    fi
+
+    bb_sanitize_pkg_identifier_notag ${PKG_NAME} ${PKG_ROOT_IT} ${PKG_VERS}
+}
+
+function bb_say_packages {
+    if [ ! -d ${BB_ROOT} ]; then
+        echo "Possible package directories: "
+        for d in ${BB_ROOT}/*/ ; do
+            echo "\t ${d}"
+        done
+    fi
+}
+
+function bb_say_versions {
+    if [ -d ${BB_ROOT}/${1} ]; then
+        echo "Possible versions for package ${1}: "
+        for d in ${BB_ROOT}/${1}/*/ ; do
+            echo -e "\t $(echo $d | sed "s|${BB_ROOT}/${1}/||g" | sed 's|/||g')"
+        done
+    fi
+}
+
+function bb_say_root_names {
+    if [ -d ${BB_ROOT}/${1}/${2} ]; then
+        echo "Possible root image names for package ${1}, version: ${2}: "
+        for d in ${BB_ROOT}/${1}/${2}/*/ ; do
+            echo -e "\t $(echo $d | sed "s|${BB_ROOT}/${1}/${2}/||g" | sed 's|/||g')"
+        done
+    fi
+}
+
+function bb_say_root_tags {
+    if [ -d ${BB_ROOT}/${1}/${2}/${3} ]; then
+        echo "Possible root tag names for package ${1}, version: ${2}, based on ${3}: "
+        for d in ${BB_ROOT}/${1}/${2}/${3}/*/ ; do
+            echo -e "\t $(echo $d | sed "s|${BB_ROOT}/${1}/${2}/${3}/||g" | sed 's|/||g')"
+        done
+    fi
+}
+
+function bb_check_dir_structure {
+
+    local PKG_NAME=$1
+    local PKG_ROOT_IT=$2
+    local PKG_VERS=$3
+    local PKG_ROOT_IMAGE
+    local PKG_ROOT_TAG
+
+    if ! bb_sanitize_pkg_identifier_notag ${PKG_NAME} \
+                                          ${PKG_ROOT_IT} ${PKG_VERS}; then
+      return ${?}
+    fi
+
+    if [ ! -d $BB_ROOT ]; then
+        echo "BB_ROOT directory \"$BB_ROOT/\" doesn't exist."
+        return 3
+    fi
+
+    if [ ! -d $BB_ROOT/$PKG_NAME ]; then
+        echo "Package directory \"$BB_ROOT/$PKG_NAME\" doesn't exist."
+        bb_say_packages
+        return 3
+    fi
+
+    if [ ! -d $BB_ROOT/$PKG_NAME/$PKG_VERS ]; then
+        echo "Version directory \"$BB_ROOT/$PKG_NAME/$PKG_VERS\" doesn't exist."
+        bb_say_versions ${PKG_NAME}
+        return 3
+    fi
+
+    if [ ! -d $BB_ROOT/$PKG_NAME/$PKG_VERS/$PKG_ROOT_IMAGE ]; then
+        echo "Package root container directory \"$BB_ROOT/$PKG_NAME/$PKG_VERS/$PKG_ROOT_IMAGE\" doesn't exist."
+        bb_say_root_names ${PKG_NAME} ${PKG_VERS}
+        return 3
+    fi
+
+    if [ ! -d $BB_ROOT/$PKG_NAME/$PKG_VERS/$PKG_ROOT_IMAGE/$PKG_ROOT_TAG ]; then
+        echo "Package root container tag directory \"$BB_ROOT/$PKG_NAME/$PKG_VERS/$PKG_ROOT_IMAGE/$PKG_ROOT_TAG\" doesn't exist."
+        bb_say_root_names ${PKG_NAME} ${PKG_VERS} ${PKG_ROOT_IMAGE}
+        return 3
+    fi
+
+    if [ ! -e $BB_ROOT/$PKG_NAME/$PKG_VERS/$PKG_ROOT_IMAGE/$PKG_ROOT_TAG/build.ah ]; then
+        echo "Script \"$BB_ROOT/$PKG_NAME/$PKG_VERS/$PKG_ROOT_IMAGE/$PKG_ROOT_TAG/build.ah\" doesn't exist."
+        return 4
+    fi
+
+    if [ ! -x $BB_ROOT/$PKG_NAME/$PKG_VERS/$PKG_ROOT_IMAGE/$PKG_ROOT_TAG/build.ah ]; then
+        echo "Script \"$BB_ROOT/$PKG_NAME/$PKG_VERS/$PKG_ROOT_IMAGE/$PKG_ROOT_TAG/build.ah\" isn't executable."
+        return 5
+    fi
+
+    return 0
+}
+
+function bb_resolve_vers {
+  local PKG_NAME=$1
+  local PKG_VERS=$2
+
+  if [ ! "${PKG_VERS}" = "default" ]; then
+    echo "${PKG_VERS}"
+  else
+    if [ ! -d ${BB_ROOT}/${PKG_NAME}/default ]; then
+      echo "[ERROR]: Tried to resolve default version for package: ${PKG_NAME}, but ${BB_ROOT}/${PKG_NAME}/default doesn't exist."
+      exit 1
+    fi
+    echo $(echo $(readlink -f ${BB_ROOT}/${PKG_NAME}/default) | sed "s|${BB_ROOT}/${PKG_NAME}/||g")
+  fi
+}
+
+function bb_get_image_FQName {
+  local PKG_NAME=$1
+  local PKG_ROOT_IT=$2
+  local PKG_VERS=$3
+  local PKG_TAG=$4
+
+  PKG_VERS=$(bb_resolve_vers ${PKG_NAME} ${PKG_VERS})
+
+  # If default is really the name of the version, then we don't add it to the image name
+  if [ "${PKG_VERS}" = "default" ]; then
+    echo "${BB_REPO_SL}${PKG_NAME}:${PKG_TAG}"
+  else
+    echo "${BB_REPO_SL}${PKG_NAME}_${PKG_VERS}:${PKG_TAG}"
+  fi
+}

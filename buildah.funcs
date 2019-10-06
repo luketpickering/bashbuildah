@@ -1,0 +1,122 @@
+#!/bin/bash
+
+source ${BB_SCRIPT_DIR}/framework.funcs
+
+function bb_inject {
+
+    local PKG_NAME
+    local PKG_VERS
+    local PKG_ROOT_IMAGE
+    local PKG_ROOT_TAG
+
+    local FROM=$1
+    local TO=$2
+    if [ -z $FROM ]; then
+      echo "Error: expected a FROM buildah container id."
+      exit 1
+    fi
+
+    if [ -z $TO ]; then
+      echo "Error: expected a TO buildah container id."
+      exit 2
+    fi
+
+    shift; shift
+
+    if ! bb_check_dir_structure $1 $2 $3; then
+      return 3
+    fi
+
+    if [ ! -e $BB_ROOT/$PKG_NAME/$PKG_VERS/$PKG_ROOT_IMAGE/$PKG_ROOT_TAG/injectin.to ]; then
+        echo "Script \"$BB_ROOT/$PKG_NAME/$PKG_VERS/$PKG_ROOT_IMAGE/$PKG_ROOT_TAG/injectin.to\" doesn't exist."
+        return 4
+    fi
+
+    if [ ! -x $BB_ROOT/$PKG_NAME/$PKG_VERS/$PKG_ROOT_IMAGE/$PKG_ROOT_TAG/injectin.to ]; then
+        echo "Script \"$BB_ROOT/$PKG_NAME/$PKG_VERS/$PKG_ROOT_IMAGE/$PKG_ROOT_TAG/injectin.to\" isn't executable."
+        return 5
+    fi
+
+    if ! $BB_ROOT/$PKG_NAME/$PKG_VERS/$PKG_ROOT_IMAGE/$PKG_ROOT_TAG/injectin.to $FROM $TO; then
+      return 6
+    fi
+
+    return 0
+}
+
+function bb_cont_get_env {
+    local CONT=$1
+    local ENVNAME=$2
+
+    # Have to check if it is empty or it will print an error
+    if buildah run ${CONT} printenv ${ENVNAME} &> /dev/null; then
+      buildah run ${CONT} printenv ${ENVNAME}
+    fi
+}
+
+function bb_cont_set_psone {
+    local CONT=$1
+    local STR=$2
+    buildah run ${CONT} sed -i -e "\$a PS1=\"\\\\[\\\\033[01;31m\\\\]${STR}\\\\[\\\\033[00m\\\\]:\\\\[\\\\033[01;34m\\\\]\\\\w\\\\[\\\\033[00m\\\\]# \"" /root/.bashrc
+}
+
+function bb_cont_copy_from_to {
+    local FROM=$1
+    local TO=$2
+    local SRC=$3
+    local DEST=$4
+
+cat << EOF > /tmp/$$.copy
+#!/bin/bash
+FROM_MP=\$(buildah mount ${FROM})
+buildah copy ${TO} \$FROM_MP$SRC $DEST &> /dev/null
+buildah unmount ${FROM} &> /dev/null
+EOF
+
+  chmod +x /tmp/$$.copy
+  buildah unshare /tmp/$$.copy
+  rm /tmp/$$.copy
+
+}
+
+function bb_cont_wildcard_copy {
+  local CONT=$1
+  local SRC=$2
+  local DEST=$3
+
+cat << EOF > /tmp/$$.wccopy
+#!/bin/bash
+CONT_MP=\$(buildah mount ${CONT})
+echo cp \$CONT_MP${SRC} \$CONT_MP$DEST
+cp \$CONT_MP${SRC} \$CONT_MP$DEST
+buildah unmount ${CONT} &> /dev/null
+EOF
+
+  chmod +x /tmp/$$.wccopy
+  buildah unshare /tmp/$$.wccopy
+  rm /tmp/$$.wccopy
+}
+
+function bb_add_from_pkg_dir {
+  local TO=$1
+  local SRC=$2
+  local DEST=$3
+
+  if [ ! -e ${BB_PKG_DIR}/${SRC} ]; then
+    echo "Requested buildah add ${TO} ${SRC} ${DEST} but cannot find: \"${BB_PKG_DIR}/${SRC}\""
+    return 1
+  fi
+  buildah add ${TO} ${BB_PKG_DIR}/${SRC} ${DEST}
+}
+
+function bb_get_buildbox {
+  bb_get_reponame buildbox ${1}
+}
+
+function bb_get_runbox {
+  bb_get_reponame runbox ${1}
+}
+
+function bb_get_runbox_min {
+  bb_get_reponame runbox_min ${1}
+}

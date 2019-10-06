@@ -1,8 +1,8 @@
 #!/bin/bash
 
-NAME=""
-ROOT_IT=""
-VERS="default"
+PKG_NAME=""
+PKG_ROOT_IT=""
+PKG_VERS="default"
 
 if ! echo "${BASH_SOURCE}" | grep "/" --silent; then
   BB_SCRIPT_DIR=$(readlink -f $PWD)
@@ -22,8 +22,8 @@ while [[ ${#} -gt 0 ]]; do
         exit 1
       fi
 
-      NAME="$2"
-      echo "[OPT]: Attempting to build package named: \"${NAME}\""
+      PKG_NAME="$2"
+      echo "[OPT]: Attempting to build package named: \"${PKG_NAME}\""
       shift # past argument
       ;;
 
@@ -34,8 +34,8 @@ while [[ ${#} -gt 0 ]]; do
         exit 1
       fi
 
-      ROOT_IT="$2"
-      echo "[OPT]: Building for root image: \"${ROOT_IT}\""
+      PKG_ROOT_IT="$2"
+      echo "[OPT]: Building for root image: \"${PKG_ROOT_IT}\""
       shift # past argument
       ;;
 
@@ -46,8 +46,8 @@ while [[ ${#} -gt 0 ]]; do
         exit 1
       fi
 
-      VERS="$2"
-      echo "[OPT]: Building version: \"${VERS}\""
+      PKG_VERS="$2"
+      echo "[OPT]: Building version: \"${PKG_VERS}\""
       shift # past argument
       ;;
 
@@ -100,40 +100,40 @@ fi
 
 export BB_ROOT
 
-source $BB_SCRIPT_DIR/common.funcs
+source ${BB_SCRIPT_DIR}/framework.funcs
 
-if [ -z $NAME ]; then
+if [ -z $PKG_NAME ]; then
   echo "Must specify a Name for the new container structure."
   exit 1
 fi
-if [ -z $ROOT_IT ]; then
+if [ -z $PKG_ROOT_IT ]; then
   echo "Must specify a root image name for the new container structure."
   exit 1
 fi
-VERS=$3
-if [ -z $VERS ]; then
-    VERS=default
+PKG_VERS=$3
+if [ -z $PKG_VERS ]; then
+    PKG_VERS=default
 fi
 
-if bb_check_exists $NAME $ROOT_IT $VERS; then
-  echo "Directory for $NAME with version $VERS rooted on $ROOT_IT already exists."
+if bb_check_dir_structure $PKG_NAME $PKG_ROOT_IT $PKG_VERS; then
+  echo "Directory for $PKG_NAME with version $PKG_VERS rooted on $PKG_ROOT_IT already exists."
   exit 1
 fi
 
-ROOT_IMAGE=${ROOT_IT%%:*}
-ROOT_TAG=${ROOT_IT##*:}
-if [ "${ROOT_TAG}" = "${ROOT_IMAGE}" ]; then
-    ROOT_TAG=latest
+PKG_ROOT_IMAGE=${PKG_ROOT_IT%%:*}
+PKG_ROOT_TAG=${PKG_ROOT_IT##*:}
+if [ "${PKG_ROOT_TAG}" = "${PKG_ROOT_IMAGE}" ]; then
+    PKG_ROOT_TAG=latest
 fi
 
-mkdir -p $BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG
-echo "#!/bin/bash" > $BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/build.ah
-chmod +x $BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/build.ah
-echo "#!/bin/bash" > $BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/injectin.to
-chmod +x $BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/injectin.to
-echo "# [repo/]NAME[:TAG=latest]         ROOT IMAGE[:tag=latest]  [VERSION=default]"  > $BB_ROOT/$NAME/$VERS/$ROOT_IMAGE/$ROOT_TAG/depends.on
+mkdir -p $BB_ROOT/$PKG_NAME/$PKG_VERS/$PKG_ROOT_IMAGE/$PKG_ROOT_TAG
+echo "#!/bin/bash" > $BB_ROOT/$PKG_NAME/$PKG_VERS/$PKG_ROOT_IMAGE/$PKG_ROOT_TAG/build.ah
+chmod +x $BB_ROOT/$PKG_NAME/$PKG_VERS/$PKG_ROOT_IMAGE/$PKG_ROOT_TAG/build.ah
+echo "#!/bin/bash" > $BB_ROOT/$PKG_NAME/$PKG_VERS/$PKG_ROOT_IMAGE/$PKG_ROOT_TAG/injectin.to
+chmod +x $BB_ROOT/$PKG_NAME/$PKG_VERS/$PKG_ROOT_IMAGE/$PKG_ROOT_TAG/injectin.to
+echo "# PKG_NAME[@Version=default][:Tag=<ROOT_IMAGE_TAG>] ROOT_IMAGE_NAME[:Tag=latest]"  > $BB_ROOT/$PKG_NAME/$PKG_VERS/$PKG_ROOT_IMAGE/$PKG_ROOT_TAG/depends.on
 
-if [ ! "${VERS}" = "default" ]; then
-  cd $BB_ROOT/$NAME/
-  ln -s $VERS default
+if [ ! "${PKG_VERS}" = "default" ]; then
+  cd $BB_ROOT/$PKG_NAME/
+  ln -s $PKG_VERS default
 fi
