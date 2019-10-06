@@ -104,3 +104,10 @@ Available environment variables:
   `bashbuild.ah` Careful not to rely on this environment variable in `inject.to` 
   scripts as they are designed to be called by `build.ah` scripts from other 
   packages
+
+  BB_PKG_DIR
+BB_PKG_NAME
+BB_PKG_ROOT_IT
+BB_PKG_VERS
+BB_PKG_TAG
+BB_PKG_IMAGE_FQNAME
