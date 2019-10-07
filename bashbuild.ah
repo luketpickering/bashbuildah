@@ -187,14 +187,14 @@ function bb_resolve_deps {
     set -- $DEP_IDENTIFIER
     local DEP_NAME=$1
     local DEP_QUALS=$2
-    local DEP_VERS
-    local DEP_TAG
+    local DEP_VERS="default"
+    local DEP_TAG=""
     if [ ! -z ${DEP_QUALS} ]; then
       IFS=":"
       set -- ${DEP_QUALS}
       DEP_VERS=$1
       DEP_TAG=$2
-    else 
+    else
       IFS=":"
       set -- ${DEP_NAME}
       DEP_NAME=$1
@@ -225,7 +225,7 @@ function bb_resolve_deps {
     fi
 
     # This check includes the repo name, to ensure that the dependency is fulfilled
-    if [ ${DRY_RUN} -eq 0 ] && 
+    if [ ${DRY_RUN} -eq 0 ] &&
        ! podman image exists ${DEP_IMAGE_FQNAME}; then
       echo "After building: \"${DEP_IMAGE_FQNAME}\" does not exist. Something went wrong."
       return 1
@@ -257,6 +257,7 @@ function bb_build {
     bb_sanitize_pkg_identifier $PKG_NAME $PKG_ROOT_IT $PKG_VERS $PKG_TAG
 
     local PKG_IMAGE_FQNAME=$(bb_get_image_FQName $PKG_NAME $PKG_ROOT_IT $PKG_VERS $PKG_TAG)
+    PKG_VERS=$(bb_resolve_vers ${PKG_NAME} ${PKG_VERS})
 
     if [ ! "${FORCEBUILD}" = "ON" ] && \
        podman image exists ${PKG_IMAGE_FQNAME}; then
@@ -282,8 +283,8 @@ function bb_build {
     export BB_PKG_TAG=${PKG_TAG}
     export BB_PKG_IMAGE_FQNAME=${PKG_IMAGE_FQNAME}
 
-    if [ ${DRY_RUN} -eq 0 ] && 
-       ! ${BB_PKG_DIR}/build.ah ${PKG_TAG}; then
+    if [ ${DRY_RUN} -eq 0 ] &&
+       ! ${BB_PKG_DIR}/build.ah; then
       echo "Failed building ${PKG_IMAGE_FQNAME}"
       return 1
     fi

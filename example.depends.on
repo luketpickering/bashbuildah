@@ -2,8 +2,7 @@
 basepkg@v1.1.1:funky-fish debian:stretch-slim
 # This declaration will expect to be able to find a directory structure like:
 #    `$BB_ROOT/basepkg/v1.1.1/debian/stretch-slim`
-# and an image named: 
+# and an image named:
 #    `basepkg_v1.1.1:funky-fish`
 # optionally, if a repo name is defined, then the image will expected to be
 #    `${BB_REPO}/basepkg_v1.1.1:funky-fish`
-
