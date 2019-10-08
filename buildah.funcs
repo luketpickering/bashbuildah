@@ -19,10 +19,12 @@ function bb_mv_build_target {
     shift; shift
 
     local PKG_NAME=$1
-    local PKG_ROOT_IT=${BB_PKG_ROOT_IT}
     local PKG_VERS=$2
+    local PKG_ROOT_IT=${BB_PKG_ROOT_IT}
     local PKG_ROOT_IMAGE
     local PKG_ROOT_TAG
+
+    bb_sanitize_pkg_identifier $PKG_NAME $PKG_ROOT_IT $PKG_VERS $PKG_TAG
 
     if ! bb_check_dir_structure $PKG_NAME $PKG_ROOT_IT $PKG_VERS; then
       return 3
@@ -38,8 +40,10 @@ function bb_mv_build_target {
         return 5
     fi
 
-    export BB_INJ_NAME=$PKG_NAME
-    export BB_INJ_VERS=$PKG_VERS
+    local BB_INJ_NAME=$PKG_NAME
+    local BB_INJ_VERS=$PKG_VERS
+    export BB_INJ_NAME
+    export BB_INJ_VERS
     if ! $BB_ROOT/$PKG_NAME/$PKG_VERS/$PKG_ROOT_IMAGE/$PKG_ROOT_TAG/injectin.to $FROM $TO; then
       return 6
     fi
@@ -51,14 +55,23 @@ function bb_mv_build_target {
 
 function bb_inject {
   local TARG_NAME=$1
-  local TARG_ROOT_IT=${BB_PKG_ROOT_IT}
   local TARG_VERS=$2
-  local TO=$4
+  local TO=$3
 
-  local REPONAME=$(bb_get_reponame ${TARG_NAME}_${TARG_VERS} ${TARG_ROOT_IT})
+  local REPONAME=$(bb_get_image_FQName ${TARG_NAME} ${BB_PKG_ROOT_IT} ${TARG_VERS})
 
   local FROM=$(buildah from ${REPONAME})
-  bb_mv_build_target ${FROM} ${TO} ${TARG_NAME} ${TARG_ROOT_IT} ${TARG_VERS}
+  bb_mv_build_target ${FROM} ${TO} ${TARG_NAME} ${TARG_VERS}
+  buildah rm ${FROM}
+}
+
+function bb_consume_target {
+  local TARG_NAME=$1
+  local TARG_VERS=$2
+  local FROM=$3
+  local TO=$4
+
+  bb_mv_build_target ${FROM} ${TO} ${TARG_NAME} ${TARG_VERS}
   buildah rm ${FROM}
 }
 
@@ -72,12 +85,12 @@ function bb_cont_get_env {
     fi
 }
 
-function bb_set_env {
+function bb_cont_set_env {
   local CONT=$1
   local ENVNAME=$2
   local ENVVALUE=$3
 
-  buildah config --env ${ENVNAME} ${ENVVALUE} ${CONT}
+  buildah config --env ${ENVNAME}=${ENVVALUE} ${CONT}
 }
 
 function bb_add_to_path_env {
@@ -85,8 +98,8 @@ function bb_add_to_path_env {
   local ENVNAME=$2
   local ENVVALUE=$3
 
-  CONTVAL=$(bb_get_cont_env ${CONT} ${ENVNAME})
-  bb_set_env ${CONT} ${ENVNAME} "${ENVVALUE}:${CONTVAL}"
+  CONTVAL=$(bb_cont_get_env ${CONT} ${ENVNAME})
+  bb_cont_set_env ${CONT} ${ENVNAME} "${ENVVALUE}:${CONTVAL}"
 }
 
 function bb_cont_set_psone {
@@ -116,49 +129,16 @@ EOF
 
 function bb_cont_mv {
   local CONT=$1
-  local SRC=$2
-  local DEST=$3
-
-cat << EOF > /tmp/$$.bbmv
-#!/bin/bash
-CONT_MP=\$(buildah mount ${CONT})
-echo mv \$CONT_MP${SRC} \$CONT_MP$DEST
-mv \$CONT_MP${SRC} \$CONT_MP$DEST
-buildah unmount ${CONT} &> /dev/null
-EOF
-
-  chmod +x /tmp/$$.bbmv
-  buildah unshare /tmp/$$.bbmv
-  rm /tmp/$$.bbmv
+  shift
+  local CMD="mv $@"
+  buildah run ${CONT} bash -c "${CMD}"
 }
 
 function bb_cont_cp {
   local CONT=$1
-  local DASHR=""
-  if [ "$2" = "-r" ]; then
-    DASHR=$2
-    shift
-  fi
   shift
-
-  local SRC
-  while [[ ${#} -gt 1 ]]; do
-    SRC="${SRC} \$CONT_MP$1"
-    shift
-  done
-  local DEST=$1
-
-cat << EOF > /tmp/$$.bbcp
-#!/bin/bash
-CONT_MP=\$(buildah mount ${CONT})
-echo cp ${DASHR} \$CONT_MP${SRC} \$CONT_MP$DEST
-cp \$CONT_MP${SRC} \$CONT_MP$DEST
-buildah unmount ${CONT} &> /dev/null
-EOF
-
-  chmod +x /tmp/$$.bbcp
-  buildah unshare /tmp/$$.bbcp
-  rm /tmp/$$.bbcp
+  local CMD="cp $@"
+  buildah run ${CONT} bash -c "${CMD}"
 }
 
 function bb_add_from_pkg_dir {
@@ -174,22 +154,23 @@ function bb_add_from_pkg_dir {
 }
 
 function bb_get_buildbox {
-  bb_get_reponame buildbox ${1}
+  bb_get_image_FQName buildbox ${1}
 }
 
 function bb_get_runbox {
-  bb_get_reponame runbox ${1}
+  bb_get_image_FQName runbox ${1}
 }
 
 function bb_get_runbox_min {
-  bb_get_reponame runbox_min ${1}
+  bb_get_image_FQName runbox_min ${1}
 }
 
 function bb_cont_mkdir {
   local CONT=${1}
-  local LOC=${2}
+  shift
+  local LOCS="$@"
 
-  buildah run ${CONT} mkdir -p ${LOC}
+  buildah run ${CONT} mkdir -p ${LOCS}
 }
 
 function bb_cont_cd {
@@ -204,7 +185,7 @@ function bb_cont_mkdir_cd {
   local LOC=${2}
 
   bb_cont_mkdir ${CONT} ${LOC}
-  bb_cont_mv ${CONT} ${LOC}
+  bb_cont_cd ${CONT} ${LOC}
 }
 
 function bb_commit {
@@ -214,7 +195,7 @@ function bb_commit {
     IMAGE_FQNAME=${BB_PKG_IMAGE_FQNAME}
   fi
   buildah config --entrypoint /bin/bash ${CONT}
-  bb_set_psone ${CONT} ${BB_PKG_NAME}_${BB_PKG_VERS}
+  bb_cont_set_psone ${CONT} ${BB_PKG_NAME}_${BB_PKG_VERS}
   local ID=$(buildah commit ${CONT} ${IMAGE_FQNAME})
   echo "[BB]: Committed ${CONT} -> ${IMAGE_FQNAME}"
   local RMID=$(buildah rm ${CONT})

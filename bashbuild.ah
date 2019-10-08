@@ -1,7 +1,7 @@
 #!/bin/bash
 set +x
 
-DRY_RUN=1
+DRY_RUN=0
 
 PKG_NAME=""
 PKG_ROOT_IT=""
@@ -164,8 +164,9 @@ export BB_REBUILD=OFF
 source $BB_SCRIPT_DIR/framework.funcs
 
 function bb_resolve_deps {
+  local INDENT="${INDENT}+"
   local DEPFILE=$1
-  echo "Resolving dependencies found in: \"${DEPFILE}\""
+  echo "${INDENT}Resolving dependencies found in: \"${DEPFILE}\""
 
   local IFS=$'\n'
   {
@@ -215,19 +216,24 @@ function bb_resolve_deps {
 
     local DEP_IMAGE_FQNAME=$(bb_get_image_FQName $DEP_NAME $DEP_ROOT_IT $DEP_VERS $DEP_TAG)
 
-    echo "Attempt to build dependency:"
-    echo -e "\timage     : \"${DEP_IMAGE_FQNAME}\""
-    echo -e "\troot-image: \"${DEP_ROOT_IT}\""
-    echo -e "\tversion   : ${DEP_VERS_STR}"
+    echo "${INDENT}Attempt to build dependency:"
+    echo -e "${INDENT}\timage     : \"${DEP_IMAGE_FQNAME}\""
+    echo -e "${INDENT}\troot-image: \"${DEP_ROOT_IT}\""
+    echo -e "${INDENT}\tversion   : ${DEP_VERS_STR}"
 
+    local DID_BUILD=0
     if ! bb_build $DEP_NAME $DEP_ROOT_IT $DEP_VERS $DEP_TAG; then
       return 1
+    fi
+
+    if [ ${DID_BUILD} -eq 1 ]; then
+      DEP_NEEDED_REBUILD=1
     fi
 
     # This check includes the repo name, to ensure that the dependency is fulfilled
     if [ ${DRY_RUN} -eq 0 ] &&
        ! podman image exists ${DEP_IMAGE_FQNAME}; then
-      echo "After building: \"${DEP_IMAGE_FQNAME}\" does not exist. Something went wrong."
+      echo "[ERROR]: After building: \"${DEP_IMAGE_FQNAME}\" does not exist. Something went wrong."
       return 1
     fi
   done
@@ -235,6 +241,8 @@ function bb_resolve_deps {
 }
 
 function bb_build {
+
+    local INDENT="${INDENT}"
 
     local FORCEBUILD=${BB_REBUILD}
     # Used to force build of the specified container
@@ -259,21 +267,25 @@ function bb_build {
     local PKG_IMAGE_FQNAME=$(bb_get_image_FQName $PKG_NAME $PKG_ROOT_IT $PKG_VERS $PKG_TAG)
     PKG_VERS=$(bb_resolve_vers ${PKG_NAME} ${PKG_VERS})
 
-    if [ ! "${FORCEBUILD}" = "ON" ] && \
-       podman image exists ${PKG_IMAGE_FQNAME}; then
-      echo "Not rebuilding: \"${PKG_IMAGE_FQNAME}\""
-      return 0
-    else
-      echo "Image \"${PKG_IMAGE_FQNAME}\" needs building..."
-    fi
-
     local PKG_DIR="${BB_ROOT}/${PKG_NAME}/${PKG_VERS}/${PKG_ROOT_IMAGE}/${PKG_ROOT_TAG}"
 
+    local DEP_NEEDED_REBUILD=0
     if [ -e ${PKG_DIR}/depends.on ]; then
       if ! bb_resolve_deps ${PKG_DIR}/depends.on; then
-        echo "Failed to resolve dependencies of \"$PKG_NAME\" (v: $PKG_VERS, t: ${PKG_TAG}) rooted on: \"$PKG_ROOT_IMAGE:$PKG_ROOT_TAG\""
+        echo "[ERROR]: Failed to resolve dependencies of \"$PKG_NAME\" (v: $PKG_VERS, t: ${PKG_TAG}) rooted on: \"$PKG_ROOT_IMAGE:$PKG_ROOT_TAG\""
         return 1
       fi
+    fi
+    if [ ${DEP_NEEDED_REBUILD} -eq 1 ]; then
+      FORCEBUILD="ON"
+    fi
+
+    if [ ! "${FORCEBUILD}" = "ON" ] && \
+       podman image exists ${PKG_IMAGE_FQNAME}; then
+      echo "${INDENT}Not rebuilding: \"${PKG_IMAGE_FQNAME}\""
+      return 0
+    else
+      echo "${INDENT}Image \"${PKG_IMAGE_FQNAME}\" needs building..."
     fi
 
     export BB_PKG_DIR=${PKG_DIR}
@@ -285,12 +297,13 @@ function bb_build {
 
     if [ ${DRY_RUN} -eq 0 ] &&
        ! ${BB_PKG_DIR}/build.ah; then
-      echo "Failed building ${PKG_IMAGE_FQNAME}"
+      echo "[ERROR]: Failed building ${PKG_IMAGE_FQNAME}"
       return 1
     fi
 
     if [ ${DRY_RUN} -eq 0 ]; then
-      echo "Built: ${PKG_IMAGE_FQNAME}"
+      echo "${INDENT}Built: ${PKG_IMAGE_FQNAME}"
+      DID_BUILD=1
     else
       echo "BUILD ENV:"
       echo -e "\tBB_ROOT=${BB_ROOT}"
@@ -313,12 +326,12 @@ function bb_build {
 }
 
 if [ -z $PKG_NAME ]; then
-  echo "Must specify a package name for the container to build (-n)."
+  echo "[ERROR]: Must specify a package name for the container to build (-n)."
   bb_say_packages
   exit 1
 fi
 if [ -z $PKG_ROOT_IT ]; then
-  echo "Must specify a root image name for the container structure."
+  echo "[ERROR]: Must specify a root image name for the container structure."
   bb_say_root_names $PKG_NAME default
   exit 2
 fi

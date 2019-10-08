@@ -148,7 +148,7 @@ function bb_resolve_vers {
   local PKG_NAME=$1
   local PKG_VERS=$2
 
-  if [ ! "${PKG_VERS}" = "default" ]; then
+  if [ ! -z "${PKG_VERS}" ] && [ ! "${PKG_VERS}" = "default" ]; then
     echo "${PKG_VERS}"
   else
     if [ ! -d ${BB_ROOT}/${PKG_NAME}/default ]; then
@@ -166,6 +166,10 @@ function bb_get_image_FQName {
   local PKG_TAG=$4
 
   PKG_VERS=$(bb_resolve_vers ${PKG_NAME} ${PKG_VERS})
+
+  if [ -z ${PKG_TAG} ]; then
+    PKG_TAG=$(bb_get_root_tag ${PKG_ROOT_IT})
+  fi
 
   # If default is really the name of the version, then we don't add it to the image name
   if [ "${PKG_VERS}" = "default" ]; then
