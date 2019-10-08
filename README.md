@@ -7,10 +7,10 @@ For maximal fragility and ease of scripting, most metadata is purely
 directory structure defined.
 
 Containers have 4 bits of metadata:
-*) Name
-*) Versions
-*) Root image name
-*) Root image tag
+* Name
+* Versions
+* Root image name
+* Root image tag
 
 e.g. For PKG 1.2.3 based on debian:stretch-slim, you can expect to
 find the build scripts in `PKG/1_2_3/debian/stretch-slim`.
@@ -29,7 +29,7 @@ runtime container, or a subsequent build step. *N.B.* This may often
 include setting up the correct runtime environment in the `to`
 container. Helper functions exist for abstracting the injection of build
 targets from a stage or dependency container into runtime container along
-with a few other helper function in `common.funcs`.
+with a few other helper function in `buildah.funcs`.
 
 ## Usage
 
@@ -68,7 +68,7 @@ The steering script: `bashbuild.ah` responds to `--help` like:
 ```
 
 A helper script for generating the directory structure for a new
-container build script is also provided `addabui.ld` which respondes
+container build script is also provided `addabui.ld` which responds
 to `--help` like:
 
 ```
@@ -84,30 +84,38 @@ to `--help` like:
 
 ```
 
+## Useful user environment variables
+
+* `BB_ROOT`: This points to the root directory of the container build script
+             hierarchy. If it is not set, then `pwd` is used.
+* `BB_REPO`: This sets the repository prefix on built containers.
+
 ## Writing build scripts
 
 ```//TODO```
 
-### `build.ah` Script environment
+### The package `build.ah` environment
 
-Passed a single command line option which is tag expected to be built by this
-invocation.
+* `BB_SCRIPT_DIR`: The directory containing the currently executing
+                 `bashbuild.ah` instance. Used to set up common functions for
+                 use in user build scripts.
+* `BB_PKG_DIR`: The directory containing the build.ah script being executed
+                by `bashbuild.ah` Careful not to rely on this environment variable in `inject.to` scripts as they are designed to be called by other packages `build.ah` scripts.
+* `BB_PKG_NAME`: The name of the currently building package
+* `BB_PKG_ROOT_IT`: The name of the root package (read OS flavor container) of
+                    the currently building dependency tree.
+* `BB_PKG_VERS`: The resolved version identifier for the currently building
+                 package.
+* `BB_PKG_TAG`: The image tag to be used for the currently building package
+* `BB_PKG_IMAGE_FQNAME`: The expected full image name for the currently
+                         building package, the existence of this image will
+                         be checked after the `build.ah` script finishes
+                         executing.
 
-Available environment variables:
+### The package `injectin.to` environment
 
-`BB_SCRIPT_DIR`: The directory containing the currently executing bashbuildah instance. Used to set up common functions for use in build scripts.
-`BB_REPO_SL`: The repo name with trailing slash if it exists,
-  safe to pre-pend to image name as if no repo was supplied, this will be an
-  empty string.
-`ROOT_IT`: The root_image:root_tagname specification.
-`BB_PKG_DIR`: The directory containing the build.ah script being executed by
-  `bashbuild.ah` Careful not to rely on this environment variable in `inject.to`
-  scripts as they are designed to be called by `build.ah` scripts from other
-  packages
-
-  BB_PKG_DIR
-BB_PKG_NAME
-BB_PKG_ROOT_IT
-BB_PKG_VERS
-BB_PKG_TAG
-BB_PKG_IMAGE_FQNAME
+* `BB_INJ_NAME`: The name of the package being injected; *i.e.* the dependent
+                 package, as opposed to `BB_PKG_NAME`, which in the
+                 environment of the `injectin.to` script will often be the
+                 dependee.
+* `BB_INJ_VERS`: The version of the package being injected.
