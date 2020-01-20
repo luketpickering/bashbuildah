@@ -91,10 +91,22 @@ while [[ ${#} -gt 0 ]]; do
       shift # past argument
       ;;
 
-      -R|--repo)
+      -f|--rebuild-deps)
 
       BB_REBUILD="ON"
       echo "[OPT]: Rebuilding dependencies."
+      ;;
+
+      -j)
+
+      if [[ ${#} -lt 2 ]]; then
+        echo "[ERROR]: ${1} expected a value."
+        exit 1
+      fi
+
+      N_CORES="$2"
+      echo "[OPT]: Building with ${2} cores where supported."
+      shift # past argument
       ;;
 
       -?|--help)
@@ -132,6 +144,8 @@ echo -e "\t                                       scripts, user defined caching"
 echo -e "\t                                       stages may not be rebuilt. "
 echo -e "\t                                       If you mean business, "
 echo -e "\t                                       \'buildah rmi --all\'."
+echo -e "\t-j <ncores>                          : Use <ncores> for builds that"
+echo -e "\t                                       support it."
 echo -e "\t-?|--help                            : Print this message."
       exit 0
       ;;
@@ -156,6 +170,16 @@ export BUILDAH_FORMAT=docker
 BB_REPO_SL=
 if [ ! -z $BB_REPO ]; then
   BB_REPO_SL="${BB_REPO}/"
+fi
+
+if [ -z ${N_CORES} ]; then
+  N_CORES=1
+fi
+
+export N_CORES
+
+if [ -z ${PKG_ROOT_IT} ] && [ ! -z ${BB_ROOT_IT} ]; then
+   PKG_ROOT_IT=${BB_ROOT_IT}
 fi
 
 export BB_REPO_SL
@@ -183,6 +207,9 @@ function bb_resolve_deps {
     set -- $SANIT_LINE
     local DEP_IDENTIFIER=$1
     local DEP_ROOT_IT=$2
+    if [ "$DEP_ROOT_IT" == "\$ENV\$" ]; then
+      DEP_ROOT_IT=$BB_ROOT_IT
+    fi
 
     IFS="@"
     set -- $DEP_IDENTIFIER

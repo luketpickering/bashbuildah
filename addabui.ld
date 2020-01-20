@@ -102,6 +102,10 @@ export BB_ROOT
 
 source ${BB_SCRIPT_DIR}/framework.funcs
 
+if [ -z ${PKG_ROOT_IT} ] && [ ! -z ${BB_ROOT_IT} ]; then
+   PKG_ROOT_IT=${BB_ROOT_IT}
+fi
+
 if [ -z $PKG_NAME ]; then
   echo "Must specify a Name for the new container structure."
   exit 1
@@ -110,12 +114,12 @@ if [ -z $PKG_ROOT_IT ]; then
   echo "Must specify a root image name for the new container structure."
   exit 1
 fi
-PKG_VERS=$3
+
 if [ -z $PKG_VERS ]; then
     PKG_VERS=default
 fi
 
-if bb_check_dir_structure $PKG_NAME $PKG_ROOT_IT $PKG_VERS; then
+if bb_dir_structure_exists $PKG_NAME $PKG_ROOT_IT $PKG_VERS; then
   echo "Directory for $PKG_NAME with version $PKG_VERS rooted on $PKG_ROOT_IT already exists."
   exit 1
 fi
@@ -133,7 +137,7 @@ echo "#!/bin/bash" > $BB_ROOT/$PKG_NAME/$PKG_VERS/$PKG_ROOT_IMAGE/$PKG_ROOT_TAG/
 chmod +x $BB_ROOT/$PKG_NAME/$PKG_VERS/$PKG_ROOT_IMAGE/$PKG_ROOT_TAG/injectin.to
 echo "# PKG_NAME[@Version=default][:Tag=<ROOT_IMAGE_TAG>] ROOT_IMAGE_NAME[:Tag=latest]"  > $BB_ROOT/$PKG_NAME/$PKG_VERS/$PKG_ROOT_IMAGE/$PKG_ROOT_TAG/depends.on
 
-if [ ! "${PKG_VERS}" = "default" ]; then
+if [ ! "${PKG_VERS}" = "default" ] && [ ! -e $BB_ROOT/$PKG_NAME/default ]; then
   cd $BB_ROOT/$PKG_NAME/
   ln -s $PKG_VERS default
 fi

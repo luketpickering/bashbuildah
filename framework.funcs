@@ -1,5 +1,12 @@
 #!/bin/bash
 
+function bb_is_debug_build {
+  if [ ! -z ${BB_BUILD_TYPE} ] && [ "${BB_BUILD_TYPE}" = "DEBUG" ]; then
+    return 0
+  fi
+  return 1
+}
+
 function bb_get_root_tag {
   local PKG_ROOT_IT=${1}
 
@@ -9,6 +16,10 @@ function bb_get_root_tag {
   IFS=${OLDIFS}
   local PKG_ROOT_IMAGE=$1
   local PKG_ROOT_TAG=$2
+
+  if bb_is_debug_build; then
+    PKG_ROOT_TAG=${PKG_ROOT_TAG}_dbg
+  fi
   if [ -z $PKG_ROOT_TAG ]; then
       PKG_ROOT_TAG=latest
   fi
@@ -142,6 +153,25 @@ function bb_check_dir_structure {
     fi
 
     return 0
+}
+
+function bb_dir_structure_exists {
+  local PKG_NAME=$1
+  local PKG_ROOT_IT=$2
+  local PKG_VERS=$3
+  local PKG_ROOT_IMAGE
+  local PKG_ROOT_TAG
+
+  if ! bb_sanitize_pkg_identifier_notag ${PKG_NAME} \
+                                        ${PKG_ROOT_IT} ${PKG_VERS}; then
+    return ${?}
+  fi
+
+  if [ ! -d $BB_ROOT/$PKG_NAME/$PKG_VERS/$PKG_ROOT_IMAGE/$PKG_ROOT_TAG ]; then
+      return 1
+  fi
+
+  return 0
 }
 
 function bb_resolve_vers {

@@ -90,6 +90,11 @@ function bb_cont_set_env {
   local ENVNAME=$2
   local ENVVALUE=$3
 
+  if [[ $ENVNAME =~ "=" ]]; then
+    echo "Environment variable name passed to bb_cont_set_env contained an equals character, this is an invalid name. (Maybe you used bb_cont_set_env \${ENV} ENVNAME=ENVVAL? Should be bb_cont_set_env \${ENV} ENVNAME ENVVAL"
+    return 1
+  fi
+
   buildah config --env ${ENVNAME}=${ENVVALUE} ${CONT}
 }
 
@@ -97,6 +102,11 @@ function bb_add_to_path_env {
   local CONT=$1
   local ENVNAME=$2
   local ENVVALUE=$3
+
+  if [[ $ENVNAME =~ "=" ]]; then
+    echo "Environment variable name passed to bb_cont_set_env contained an equals character, this is an invalid name. (Maybe you used bb_cont_set_env \${ENV} ENVNAME=ENVVAL? Should be bb_cont_set_env \${ENV} ENVNAME ENVVAL"
+    return 1
+  fi
 
   CONTVAL=$(bb_cont_get_env ${CONT} ${ENVNAME})
   bb_cont_set_env ${CONT} ${ENVNAME} "${ENVVALUE}:${CONTVAL}"
@@ -153,15 +163,23 @@ function bb_add_from_pkg_dir {
   buildah add ${TO} ${BB_PKG_DIR}/${SRC} ${DEST}
 }
 
+function bb_get_devbox {
+  local BB_BUILD_TYPE=DEFAULT
+  bb_get_image_FQName devbox ${1}
+}
+
 function bb_get_buildbox {
+  local BB_BUILD_TYPE=DEFAULT
   bb_get_image_FQName buildbox ${1}
 }
 
 function bb_get_runbox {
+  local BB_BUILD_TYPE=DEFAULT
   bb_get_image_FQName runbox ${1}
 }
 
 function bb_get_runbox_min {
+  local BB_BUILD_TYPE=DEFAULT
   bb_get_image_FQName runbox_min ${1}
 }
 
@@ -195,6 +213,7 @@ function bb_commit {
     IMAGE_FQNAME=${BB_PKG_IMAGE_FQNAME}
   fi
   buildah config --entrypoint /bin/bash ${CONT}
+  bb_cont_set_env ${CONT} container_name ${BB_PKG_NAME}_${BB_PKG_VERS}
   bb_cont_set_psone ${CONT} ${BB_PKG_NAME}_${BB_PKG_VERS}
   local ID=$(buildah commit ${CONT} ${IMAGE_FQNAME})
   echo "[BB]: Committed ${CONT} -> ${IMAGE_FQNAME}"
@@ -202,6 +221,9 @@ function bb_commit {
   echo "[BB]: Removed ${CONT}"
 }
 
+function bb_from_devbox {
+  echo $(buildah from $(bb_get_devbox ${BB_PKG_ROOT_IT}))
+}
 function bb_from_buildbox {
   echo $(buildah from $(bb_get_buildbox ${BB_PKG_ROOT_IT}))
 }

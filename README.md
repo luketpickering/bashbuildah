@@ -1,5 +1,36 @@
 # bashbuildah
+
 Collection of bash scripts for buildah-ing dependent sets of containerized software.
+
+## Top container tip
+
+If being inside a container makes you claustrophobic, you can try pulling
+singularities trick of dropping you where you already were (assuming its a
+subdir of your home directory) by adding something like this to your
+`.bashrc`:
+
+```
+function podrun {
+
+  local STRIPPED
+  if [ $# -eq 1 ]; then
+    local LOC=$(readlink -f .)/
+    case ${LOC} in
+      $(readlink -f ${HOME})/*)
+        local STRIPPED=${LOC##$(readlink -f ${HOME})/}
+      ;;
+    esac
+  fi
+
+  if [ ! -z ${STRIPPED} ]; then
+    podman run -itq --rm --volume $(readlink -f ${HOME}):/root \
+                        -w /root/${STRIPPED} ${@}
+  else
+    podman run -itq --rm --volume $(readlink -f ${HOME}):/root $@
+  fi
+
+}
+```
 
 ## Basics
 
@@ -64,6 +95,8 @@ The steering script: `bashbuild.ah` responds to `--help` like:
 	                                       stages may not be rebuilt.
 	                                       If you mean business,
 	                                       \'buildah rmi --all\'.
+  -j <ncores>                           : Use <ncores> for builds that
+                                          support it.
 	-?|--help                             : Print this message.
 ```
 
@@ -89,6 +122,7 @@ to `--help` like:
 * `BB_ROOT`: This points to the root directory of the container build script
              hierarchy. If it is not set, then `pwd` is used.
 * `BB_REPO`: This sets the repository prefix on built containers.
+* `BB_ROOT_IT`: This sets the root image/tag for all build containers.
 
 ## Writing build scripts
 
