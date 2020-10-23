@@ -55,7 +55,7 @@ function bb_mv_build_target {
 
 function bb_inject {
   local TARG_NAME=$1
-  local TARG_VERS=$2
+  local TARG_VERS=$(bb_resolve_vers ${TARG_NAME} ${2})
   local TO=$3
 
   local REPONAME=$(bb_get_image_FQName ${TARG_NAME} ${BB_PKG_ROOT_IT} ${TARG_VERS})
