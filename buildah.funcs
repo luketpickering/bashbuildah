@@ -91,7 +91,7 @@ function bb_cont_set_env {
   local ENVVALUE=$3
 
   if [[ $ENVNAME =~ "=" ]]; then
-    echo "Environment variable name passed to bb_cont_set_env contained an equals character, this is an invalid name. (Maybe you used bb_cont_set_env \${ENV} ENVNAME=ENVVAL? Should be bb_cont_set_env \${ENV} ENVNAME ENVVAL"
+    echo "Environment variable name (${ENVNAME}) passed to bb_cont_set_env contained an equals character, this is an invalid name. (Maybe you used bb_cont_set_env \${CONT} ENVNAME=ENVVAL? Should be bb_cont_set_env \${CONT} ENVNAME ENVVAL"
     return 1
   fi
 
@@ -104,7 +104,7 @@ function bb_add_to_path_env {
   local ENVVALUE=$3
 
   if [[ $ENVNAME =~ "=" ]]; then
-    echo "Environment variable name passed to bb_cont_set_env contained an equals character, this is an invalid name. (Maybe you used bb_cont_set_env \${ENV} ENVNAME=ENVVAL? Should be bb_cont_set_env \${ENV} ENVNAME ENVVAL"
+    echo "Environment variable name (${ENVNAME}) passed to bb_cont_set_env contained an equals character, this is an invalid name. (Maybe you used bb_cont_set_env \${CONT} ENVNAME=ENVVAL? Should be bb_cont_set_env \${CONT} ENVNAME ENVVAL"
     return 1
   fi
 
