@@ -167,7 +167,7 @@ export BB_ROOT
 export BB_SCRIPT_DIR
 export BUILDAH_FORMAT=docker
 
-BB_REPO_SL=
+export BB_REPO_SL=
 if [ ! -z $BB_REPO ]; then
   BB_REPO_SL="${BB_REPO}/"
 fi
@@ -182,7 +182,6 @@ if [ -z ${PKG_ROOT_IT} ] && [ ! -z ${BB_ROOT_IT} ]; then
    PKG_ROOT_IT=${BB_ROOT_IT}
 fi
 
-export BB_REPO_SL
 export BB_REBUILD=OFF
 
 source $BB_SCRIPT_DIR/framework.funcs
@@ -202,44 +201,19 @@ function bb_resolve_deps {
       continue
     fi
 
-    local OLDIFS=${IFS}
-    local IFS=" "
-    set -- $SANIT_LINE
-    local DEP_IDENTIFIER=$1
-    local DEP_ROOT_IT=$2
-    if [ "$DEP_ROOT_IT" == "\$ENV\$" ]; then
-      DEP_ROOT_IT=$BB_ROOT_IT
-    fi
+    local DEP_NAME
+    local DEP_VERS
+    local DEP_TAG
+    local DEP_ROOT_IMAGE
+    local DEP_ROOT_TAG
+    bb_parse_depends_on_line $SANIT_LINE
 
-    IFS="@"
-    set -- $DEP_IDENTIFIER
-    local DEP_NAME=$1
-    local DEP_QUALS=$2
-    local DEP_VERS="default"
-    local DEP_TAG=""
-    if [ ! -z ${DEP_QUALS} ]; then
-      IFS=":"
-      set -- ${DEP_QUALS}
-      DEP_VERS=$1
-      DEP_TAG=$2
-    else
-      IFS=":"
-      set -- ${DEP_NAME}
-      DEP_NAME=$1
-      DEP_TAG=$2
-    fi
+    local DEP_ROOT_IT=${DEP_ROOT_IMAGE}:${DEP_ROOT_TAG}
 
     local DEP_VERS_STR="\"${DEP_VERS}\""
-    if [ -z $DEP_VERS ]; then
-      DEP_VERS=default
-      DEP_VERS_STR="${DEP_VERS} ($(bb_resolve_vers ${DEP_NAME} ${DEP_VERS}))"
+    if [ "${DEP_VERS}" == "default" ] && [ "$(bb_resolve_vers ${DEP_NAME} ${DEP_VERS})" != "default" ]; then
+      DEP_VERS_STR="${DEP_VERS}: \"($(bb_resolve_vers ${DEP_NAME} ${DEP_VERS}))\""
     fi
-
-    set -- $DEP_ROOT_IT
-    local DEP_ROOT_IMAGE=$1
-    local DEP_ROOT_TAG=$2
-
-    IFS=${OLDIFS}
 
     local DEP_IMAGE_FQNAME=$(bb_get_image_FQName $DEP_NAME $DEP_ROOT_IT $DEP_VERS $DEP_TAG)
 

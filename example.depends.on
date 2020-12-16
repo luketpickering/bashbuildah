@@ -1,4 +1,4 @@
-# PKG_NAME[@Version=default][:Tag=<ROOT_IMAGE_TAG>] ROOT_IMAGE_NAME[:Tag=latest]
+# [!]PKG_NAME[@Version=default][:Tag=<ROOT_IMAGE_TAG>] ROOT_IMAGE_NAME[:Tag=latest]
 basepkg@v1.1.1:funky-fish debian:stretch-slim
 # This declaration will expect to be able to find a directory structure like:
 #    `$BB_ROOT/basepkg/v1.1.1/debian/stretch-slim`
@@ -12,3 +12,8 @@ otherpkg $ENV$
 # as the base container, this facilitates reuse of build scripts
 # for different bases. N.B. It should be literally "$ENV$", the value
 # will not be expanded
+
+# If we had specified instead
+#!basepkg $ENV$
+# then that image would be marked as the base for the final image. 
+# The build image will generally still be layered in during the build.

@@ -19,7 +19,7 @@ function bb_mv_build_target {
     shift; shift
 
     local PKG_NAME=$1
-    local PKG_VERS=$2
+    local PKG_VERS=$(bb_resolve_vers ${PKG_NAME} ${2})
     local PKG_ROOT_IT=${BB_PKG_ROOT_IT}
     local PKG_ROOT_IMAGE
     local PKG_ROOT_TAG
@@ -67,7 +67,7 @@ function bb_inject {
 
 function bb_consume_target {
   local TARG_NAME=$1
-  local TARG_VERS=$2
+  local TARG_VERS=$(bb_resolve_vers ${TARG_NAME} ${2})
   local FROM=$3
   local TO=$4
 
@@ -137,6 +137,13 @@ EOF
 
 }
 
+function bb_cont_path_exists {
+  local CONT=$1
+  local CONT_PATH=$2
+
+  buildah run ${CONT} bash -c "if [ -e $CONT_PATH ]; then echo 0; else echo 1; fi"
+}
+
 function bb_cont_mv {
   local CONT=$1
   shift
@@ -183,6 +190,11 @@ function bb_get_runbox_min {
   bb_get_image_FQName runbox_min ${1}
 }
 
+function bb_get_basebox {
+  local BB_BUILD_TYPE=DEFAULT
+  bb_get_image_FQName runbox_min ${1}
+}
+
 function bb_cont_mkdir {
   local CONT=${1}
   shift
@@ -212,7 +224,7 @@ function bb_commit {
   if [ -z ${IMAGE_FQNAME} ]; then
     IMAGE_FQNAME=${BB_PKG_IMAGE_FQNAME}
   fi
-  buildah config --entrypoint /bin/bash ${CONT}
+  buildah config --entrypoint "" ${CONT}
   bb_cont_set_env ${CONT} container_name ${BB_PKG_NAME}_${BB_PKG_VERS}
   bb_cont_set_psone ${CONT} ${BB_PKG_NAME}_${BB_PKG_VERS}
   local ID=$(buildah commit ${CONT} ${IMAGE_FQNAME})
