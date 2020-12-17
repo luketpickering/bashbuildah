@@ -209,6 +209,12 @@ function bb_get_image_FQName {
   fi
 }
 
+function bb_depends_on_strip_base {
+  local SANIT_LINE=$1
+
+  echo $SANIT_LINE | sed "s/^!//g"
+}
+
 function bb_sanitize_depends_on_line {
   local RAW_LINE=$1
 
@@ -269,55 +275,46 @@ function bb_depends_on_line_is_base {
   return 1
 }
 
-function bb_depends_on_strip_base {
-  local SANIT_LINE=$1
+function bb_get_base_image_name {
 
-  echo $SANIT_LINE | sed "s/^!//g"
-}
+  local PKG_NAME=$1
+  local PKG_VERS=$2
 
-function bb_get_base {
+  if [ -z $PKG_ROOT_IT ]; then
+    echo "Error: Must be run from within a bashbuildah environment (PKG_ROOT_IT is not defined)."
+    return 1
+  fi
 
-    local PKG_NAME=$1
-    local PKG_VERS=$2
-    local DEFAULT_IMAGE=$3
+  if ! bb_check_dir_structure $PKG_NAME $PKG_ROOT_IT $PKG_VERS; then
+    return 1
+  fi
 
-    if [ -z $PKG_ROOT_IT ]; then
-      echo "Error: Must be run from within a bashbuildah environment (PKG_ROOT_IT is not defined)."
-      return 1
-    fi
+  bb_sanitize_pkg_identifier $PKG_NAME $PKG_ROOT_IT $PKG_VERS $PKG_TAG
+  PKG_VERS=$(bb_resolve_vers ${PKG_NAME} ${PKG_VERS})
 
-    if ! bb_check_dir_structure $PKG_NAME $PKG_ROOT_IT $PKG_VERS; then
-      return 1
-    fi
+  local PKG_DIR="${BB_ROOT}/${PKG_NAME}/${PKG_VERS}/${PKG_ROOT_IMAGE}/${PKG_ROOT_TAG}"
 
-    bb_sanitize_pkg_identifier $PKG_NAME $PKG_ROOT_IT $PKG_VERS $PKG_TAG
-    PKG_VERS=$(bb_resolve_vers ${PKG_NAME} ${PKG_VERS})
+  if [ ! -e ${PKG_DIR}/depends.on ]; then
+    return
+  fi
 
-    local PKG_DIR="${BB_ROOT}/${PKG_NAME}/${PKG_VERS}/${PKG_ROOT_IMAGE}/${PKG_ROOT_TAG}"
+  local IFS=$'\n'
+  {
+  for line in $(cat ${PKG_DIR}/depends.on); do
+    if bb_depends_on_line_is_base $line; then
 
-    if [ ! -e ${PKG_DIR}/depends.on ]; then
+      local DEP_NAME
+      local DEP_VERS
+      local DEP_TAG
+      local DEP_ROOT_IMAGE
+      local DEP_ROOT_TAG
+      bb_parse_depends_on_line $(bb_sanitize_depends_on_line $(bb_depends_on_strip_base $line))
+
+      echo $(bb_get_image_FQName ${DEP_NAME} ${DEP_ROOT_IMAGE}:${DEP_ROOT_TAG} ${DEP_VERS} ${DEP_TAG})
+
       return
     fi
-
-    local IFS=$'\n'
-    {
-    for line in $(cat ${PKG_DIR}/depends.on); do
-      if bb_depends_on_line_is_base $line; then
-
-        local DEP_NAME
-        local DEP_VERS
-        local DEP_TAG
-        local DEP_ROOT_IMAGE
-        local DEP_ROOT_TAG
-        bb_parse_depends_on_line $(bb_sanitize_depends_on_line $(bb_depends_on_strip_base $line))
-        echo "\"$DEP_NAME\" \"$DEP_VERS\" \"$DEP_TAG\" \"$DEP_ROOT_IMAGE\" \"$DEP_ROOT_TAG\""
-
-        echo "FQName: $(bb_get_image_FQName ${DEP_NAME} ${DEP_ROOT_IMAGE}:${DEP_ROOT_TAG} ${DEP_VERS} ${DEP_TAG})"
-
-        return
-      fi
-    done
-    echo "Package ${PKG_NAME} had no base, returning default ${DEFAULT_IMAGE}"
-    }
+  done
+  }
   
 }

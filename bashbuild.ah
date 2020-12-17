@@ -207,6 +207,7 @@ function bb_resolve_deps {
     local DEP_ROOT_IMAGE
     local DEP_ROOT_TAG
     bb_parse_depends_on_line $SANIT_LINE
+    DEP_NAME=$(bb_depends_on_strip_base ${DEP_NAME})
 
     local DEP_ROOT_IT=${DEP_ROOT_IMAGE}:${DEP_ROOT_TAG}
 

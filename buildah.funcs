@@ -245,3 +245,19 @@ function bb_from_runbox {
 function bb_from_runbox_min {
   echo $(buildah from $(bb_get_runbox_min ${BB_PKG_ROOT_IT}))
 }
+
+function bb_from_base {
+  local PKG_NAME=$1
+  local PKG_VERS=$2
+  local DEFAULT_IMAGE=$3
+  local PKG_ROOT_IT=$BB_PKG_ROOT_IT
+
+  local BASE_IMAGE_NAME=$(bb_get_base_image_name ${PKG_NAME} ${PKG_VERS})
+
+  if [ -z ${BASE_IMAGE_NAME} ]; then
+    echo $(buildah from $DEFAULT_IMAGE)
+  else
+    echo $(buildah from $BASE_IMAGE_NAME)
+  fi
+}
+
