@@ -1,0 +1,7 @@
+if [ $(buildah ps -a | wc -l) -gt 1 ]; then
+	CONT=$(buildah ps -a | tail -1 | cut -f 1 -d " ")
+	echo "starting: ${CONT}"
+	buildah run ${CONT} bash
+else
+	echo "No buildah containers running."
+fi

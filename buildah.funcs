@@ -98,6 +98,20 @@ function bb_cont_set_env {
   buildah config --env ${ENVNAME}=${ENVVALUE} ${CONT}
 }
 
+function bb_copy_env {
+  local FROM=$1
+  local TO=$2
+  local ENVNAME=$3
+
+  if [[ $ENVNAME =~ "=" ]]; then
+    echo "Environment variable name (${ENVNAME}) passed to bb_cont_set_env contained an equals character, this is an invalid name. (Maybe you used bb_cont_set_env \${CONT} ENVNAME=ENVVAL? Should be bb_cont_set_env \${CONT} ENVNAME ENVVAL"
+    return 1
+  fi
+
+  local ENVVALUE=$(bb_cont_get_env ${FROM} ${ENVNAME})
+  bb_cont_set_env ${TO} ${ENVNAME} ${ENVVALUE}
+}
+
 function bb_add_to_path_env {
   local CONT=$1
   local ENVNAME=$2
