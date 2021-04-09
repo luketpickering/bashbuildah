@@ -238,6 +238,13 @@ function bb_commit {
   if [ -z ${IMAGE_FQNAME} ]; then
     IMAGE_FQNAME=${BB_PKG_IMAGE_FQNAME}
   fi
+
+  # if we have a helper script, add it!
+  if [ ! -z "${BB_PKG_DIR}" ] && [ -e ${BB_PKG_DIR}/help.me ]; then
+      bb_add_from_pkg_dir ${CONT} help.me /usr/local/bin/
+      buildah run ${CONT} chmod +x /usr/local/bin/help.me
+  fi
+
   buildah config --entrypoint "" ${CONT}
   bb_cont_set_env ${CONT} container_name ${BB_PKG_NAME}_${BB_PKG_VERS}
   bb_cont_set_psone ${CONT} ${BB_PKG_NAME}_${BB_PKG_VERS}
